@@ -1,0 +1,1 @@
+ruby src/micro.rb $1
