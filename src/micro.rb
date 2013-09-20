@@ -101,7 +101,7 @@ class RubyCompiler
     }
     followSet={}
     Grammar::DEFINITIONS.each{|symbol, interp|
-      followSet[symbol] = getFollowSet(firstSet,symbol,[symbol]).uniq
+      followSet[symbol] = getFollowSet(firstSet,symbol).uniq
       puts "Follow(#{symbol}) = #{followSet[symbol]}"
     }
     Grammar::DEFINITIONS.each{|symbol, interp|
@@ -158,7 +158,7 @@ class RubyCompiler
     #puts "#{@parseTable}"
     @parseTable.each{|key, value|
       @parseTable[key].each{|symbol, inter|
-        puts "#{key} x #{symbol} -> #{inter}"
+        puts "#{key} x #{symbol} -> #{@indexedGrammar[inter][:interp]}"
       }
     }
   end
@@ -168,7 +168,6 @@ class RubyCompiler
     choices = Grammar::DEFINITIONS[symbol].split('|')
     firstset = []
     choices.each{|choice|
-      break if choice == "empty"
       tokens = choice.split(' ')
       tokens.each{|token|
       if !(taboo.include?(token))
@@ -190,7 +189,7 @@ class RubyCompiler
   end
 
   # fetch followset for a single symbol. this is a pretty bad algo.
-  def getFollowSet(firstSet, symbol, taboo)
+  def getFollowSet(firstSet, symbol)
     #puts "Taboo: #{taboo} | Symbol: #{symbol}"
     return [""] if symbol == "program"
     followset = []
@@ -198,21 +197,24 @@ class RubyCompiler
       if value.include? symbol
         choices = value.split('|')
         choices.each{|choice|
+          #puts "|#{choice}|symbol #{symbol}: key #{key}"
           tokens = choice.split
           if !tokens.index(symbol).nil?
             nextIndex = tokens.index(symbol) + 1
-            #puts "Tokens #{tokens}, Symbol #{symbol}, taboo #{taboo}"
+            #puts "Tokens #{tokens}, Symbol #{symbol}, key #{key}"
             if tokens.index(symbol) == tokens.size - 1
-              if value.include?(key)
+              if tokens[tokens.size-1] == key
                 followset += Grammar::DEFINITIONS.include?(key) ? firstSet[key] : [tokens[nextIndex]]
               else
-                followset += getFollowSet(firstSet, key, taboo )
+                followset += getFollowSet(firstSet, key)
               end
-            elsif Grammar::DEFINITIONS.include?(tokens[nextIndex]) and Grammar::DEFINITIONS[tokens[nextIndex]].include?("empty")
-              followset += getFollowSet(firstSet, tokens[nextIndex], taboo )
+            elsif Grammar::DEFINITIONS.include?(tokens[nextIndex]) 
+              if Grammar::DEFINITIONS[tokens[nextIndex]].include?("empty")
+                followset += getFollowSet(firstSet, tokens[nextIndex])
+              end
               followset += firstSet[tokens[nextIndex]]
             else
-              followset += Grammar::DEFINITIONS.include?(tokens[nextIndex]) ? firstSet[tokens[nextIndex]] : [tokens[nextIndex]]
+              followset += [tokens[nextIndex]]
             end
           end
         }
@@ -228,9 +230,7 @@ class RubyCompiler
     @parseStack.each{|i| print "#{i} | "}
     print "\n"
     popped = ""
-    begin
-      popped = @parseStack.shift
-    end while popped == "empty"
+    popped = @parseStack.shift
     if Grammar::TERMINAL_LIST.include?(popped)
       # If the grammar isn't literal, then it must match a keyword or operation verbosely; token[1]
       # if the grammar is literal, then it only need to match the token type; token[0]

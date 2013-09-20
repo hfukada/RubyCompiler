@@ -39,9 +39,9 @@ class Grammar
     "param_decl"       => "FLOAT id|INT id",
 
     "func_declarations"=> "func_decl func_decl_tail|empty",
+    "func_decl_tail"   => "func_decl func_decl_tail|empty",
     "func_decl"        => "FUNCTION any_type id ( func_decl_param",
     "func_decl_param"  => "param_decl_list ) BEGIN func_body END|) BEGIN func_body END",
-    "func_decl_tail"   => "func_decl func_decl_tail|empty",
     "func_body"        => "decl stmt_list",
 
     "stmt_list"        => "stmt stmt_list|empty",
@@ -56,14 +56,14 @@ class Grammar
 
     "expr"             => "factor expr_tail",
     "expr_tail"        => "addop factor expr_tail|empty",
+    "expr_list"        => "expr expr_list_tail|empty",
+    "expr_list_tail"   => ", expr expr_list_tail|empty",
 
     "factor"           => "postfix_expr factor_tail",
     "factor_tail"      => "mulop postfix_expr factor_tail|empty",
 
     "postfix_expr"     => "primary|call_expr",
     "call_expr"        => "id ( expr_list )",
-    "expr_list"        => "expr expr_list_tail|empty",
-    "expr_list_tail"   => ", expr expr_list_tail|empty",
     "primary"          => "( expr )|id|INTLITERAL|FLOATLITERAL",
     "addop"            => "+|-",
     "mulop"            => "*|/",
