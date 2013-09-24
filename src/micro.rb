@@ -9,7 +9,6 @@ def main()
   infile.each_line {|line|
     cleanline = (line.include?('--')? line[0..line.index('--')-1] : line)
     cleanline.lstrip! 
-    puts "cleanline: #{cleanline}"
     tokens = rc.tokenizeLine(cleanline)
     tokens.each{|tok|
       # tok[0] info
@@ -17,7 +16,11 @@ def main()
       #puts "#{tok[0]}: #{tok[1]}"
       #cur = parseStack[0]
       tok = tok[1] =~ Grammar::TERMINALS ? tok[1] : tok[0]
-      valid = rc.processSingleToken(tok.strip)
+      error,reply = rc.processSingleToken(tok.strip)
+      if error == 1
+        puts "Not Accepted"
+        exit
+      end
       #if vali
       #  puts "tok[0]} has passed"
       #else
@@ -25,6 +28,7 @@ def main()
       #end
     }
   }
+  puts "Accepted"
   infile.close
 end
 
@@ -97,12 +101,12 @@ class RubyCompiler
     Grammar::DEFINITIONS.each{|symbol, interp|
       @parseTable[symbol] ={}
       firstSet[symbol] = getFirstSet(symbol,[symbol]).uniq
-      puts "First(#{symbol}) = #{firstSet[symbol]}"
+      #puts "First(#{symbol}) = #{firstSet[symbol]}"
     }
     followSet={}
     Grammar::DEFINITIONS.each{|symbol, interp|
       followSet[symbol] = getFollowSet(firstSet,symbol).uniq
-      puts "Follow(#{symbol}) = #{followSet[symbol]}"
+      #puts "Follow(#{symbol}) = #{followSet[symbol]}"
     }
     Grammar::DEFINITIONS.each{|symbol, interp|
       interp.split('|').each{|choice|
@@ -158,7 +162,7 @@ class RubyCompiler
     #puts "#{@parseTable}"
     @parseTable.each{|key, value|
       @parseTable[key].each{|symbol, inter|
-        puts "#{key} x #{symbol} -> #{@indexedGrammar[inter][:interp]}"
+        #puts "#{key} x #{symbol} -> #{@indexedGrammar[inter][:interp]}"
       }
     }
   end
@@ -179,7 +183,7 @@ class RubyCompiler
             break
           end
         else
-          firstset += [token]
+          firstset += (token == "empty" ? [] :[token])
           break
         end
       end
@@ -226,31 +230,33 @@ class RubyCompiler
   # parseStack, the current stack string we are looking at
   # token, (token[0] info:token[1] value)
   def processSingleToken(token)
-    puts "curr stack" 
-    @parseStack.each{|i| print "#{i} | "}
-    print "\n"
+    #puts "curr stack" 
+    #@parseStack.each{|i| print "#{i} | "}
+    #print "\n"
     popped = ""
     popped = @parseStack.shift
+    while (popped == "empty")
+      popped = @parseStack.shift
+    end
     if Grammar::TERMINAL_LIST.include?(popped)
       # If the grammar isn't literal, then it must match a keyword or operation verbosely; token[1]
       # if the grammar is literal, then it only need to match the token type; token[0]
-      puts "#{popped} TERMINAL"
-      return ( popped == token )
+      return ( popped == token ) ? 0 : 1 , "good"
     else
       # for each of the choices (in an OR situation), split, and decide
       # popped = a symbol/nonterminal
       # token[1] = attempt to match
 
-      # puts "#{popped}x#{token}"
+      #puts "|#{popped}|x|#{token}|"
       prediction = @parseTable[popped][token]
       if prediction == nil
         @parseTable.each{|key, value|
           @parseTable[key].each{|symbol, inter|
-            puts "|#{key}| x |#{symbol}| -> |#{inter}|"
+            #puts "|#{key}| x |#{symbol}| -> |#{inter}|"
           }
         }
-        puts "what failed: |#{popped}| x |#{token}|"
-        exit
+        #puts "what failed: |#{popped}| x |#{token}|"
+        return 1, "Could not parse: |#{popped}| x |#{token}|"
       end
       interp = @indexedGrammar[prediction][:interp]
       @parseStack = interp.split + @parseStack
@@ -258,7 +264,7 @@ class RubyCompiler
       result = processSingleToken(token)
 
     end
-    return result
+    return result, "good"
   end
 end
 
