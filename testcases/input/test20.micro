@@ -7,14 +7,17 @@ BEGIN
 
 	FUNCTION INT F (INT n)
 	BEGIN
-
-		IF (n > 2)
-			RETURN F(n-1)+F(n-2);
-		ELSIF (n = 0) --This is a comment
+          INT n1;
+          
+          n1 := n;
+          
+		IF (n1 > 2)
+			RETURN F(n1-1)+F(n1-2);
+		ELSIF (n1 = 0) --This is a comment
 			RETURN 0;
-		ELSIF (n = 1)
+		ELSIF (n1 = 1)
 			RETURN 1;
-        ELSIF (n = 2)
+        ELSIF (n1 = 2)
             RETURN 1;
 		ENDIF
 

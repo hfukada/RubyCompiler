@@ -16,8 +16,8 @@ BEGIN
           b := b + 1;
           DO
                a := a + 1;
-          WHILE (a <= (j - 1));
-     WHILE (b <= (i - 1));
+          WHILE (a < j);
+     WHILE (b < i);
 
      WRITE(a);
 

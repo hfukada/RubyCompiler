@@ -1,16 +1,33 @@
-PROGRAM test
+PROGRAM sqrt
 BEGIN
-	STRING str := "test";
-	INT a,b,c,g,h,i,j,k,l,p,o,r,u,y;
 
+	STRING dummy := "abcde";  --This is dummy to satisfy the grammar
 
-	--PROTO INT main();
-	FUNCTION INT main()
+	FLOAT n;
+	FLOAT x1,x2;
+	FLOAT fx, dfx;
+	FLOAT error;
+	INT i;
+	FLOAT n;
+	FLOAT error;
+
+	--PROTO VOID main();
+
+	FUNCTION VOID main()
 	BEGIN
-	--This line should cause parse error
-	a+b;
+		error := 0.001;
+		READ (x1);
+		fx := x1*x1 - n;
+		dfx := 2.0*x1;
+		x2 := x1 - fx/dfx;
 
-	RETURN a+b;
+	DO
+		x1 := x2;
+		fx := x1*x1 - n;
+		dfx := 2.0*x1;
+		x2 := x1 - fx/dfx;
+	WHILE (x1-x2 >= error);
+
+		WRITE (x2);
 	END
 END
-
