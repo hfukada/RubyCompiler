@@ -1,4 +1,4 @@
-#!/^(usr/bin/ruby
+#!/usr/bin/ruby
 
 class Regexp
     def +(r)

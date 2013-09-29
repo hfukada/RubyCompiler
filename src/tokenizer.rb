@@ -1,5 +1,3 @@
-require './src/grammar'
-
 class RubyCompiler
   # method to tokenize a line
   def tokenizeLine(cleanline)

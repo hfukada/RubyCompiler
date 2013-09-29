@@ -8,7 +8,7 @@ def main()
     rc = RubyCompiler.new
     rc.createParseTable()
     infile.each_line {|line|
-      cleanline = (line.include?('--')? line[0..line.index('--')-1] : line)
+      cleanline = (line.include?('--')? line[0,line.index('--')] : line)
       cleanline.lstrip! 
       tokens = rc.tokenizeLine(cleanline)
       tokens.each{|tok|

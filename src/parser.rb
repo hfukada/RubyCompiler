@@ -1,5 +1,3 @@
-require './src/grammar'
-
 class RubyCompiler
   def createParseTable()
     firstSet={}
@@ -124,9 +122,11 @@ class RubyCompiler
       if prediction == nil
         @parseTable.each{|key, value|
           @parseTable[key].each{|symbol, inter|
-            #puts "|#{key}| x |#{symbol}| -> |#{inter}|"
+            puts "|#{key}| x |#{symbol}| -> |#{inter}|"
           }
         }
+        puts @parseStack
+        puts "Could not parse: |#{popped}| x |#{token}|"
         return 1, "Could not parse: |#{popped}| x |#{token}|"
       end
       interp = @indexedGrammar[prediction][:interp]
