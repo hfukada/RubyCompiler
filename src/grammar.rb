@@ -62,10 +62,6 @@ class Grammar
     "factor"           => "postfix_expr factor_tail",
     "factor_tail"      => "mulop postfix_expr factor_tail|empty",
 
-    #"postfix_expr"     => "primary|call_expr",
-    #"call_expr"        => "id (",
-    #"call_expr_tail"   => "expr_list )|)",
-    #"primary"          => "( expr )|id|INTLITERAL|FLOATLITERAL",
     "postfix_expr"     => "id call_expr|( expr )|INTLITERAL|FLOATLITERAL",
     "call_expr"        => "( call_expr_tail )|empty",
     "call_expr_tail"   => "expr_list|empty",
