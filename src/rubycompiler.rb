@@ -11,6 +11,7 @@ class RubyCompiler
   @symbolTree
   @blockIndex
   @functionIndex
+  @globals
 
   def initialize
     @parseStack = Grammar::DEFINITIONS["program"].split 

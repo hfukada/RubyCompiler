@@ -20,7 +20,7 @@ class RubyCompiler
     while @symbolStack[i][0] == 'IDENTIFIER'
       i-=1
     end
-    return !(@symbolStack[i][1] =~ Grammar::ALLOWIDENT)
+    return !(@symbolStack[i][1] =~ Grammar::ALLOWIDENT) or @globals.include? token[1]
   end
   def printSymbolStack()
     @symbolStack.each{|tok|
