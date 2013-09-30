@@ -12,15 +12,16 @@ def main()
       cleanline.lstrip! 
       tokens = rc.tokenizeLine(cleanline)
       tokens.each{|tok|
-        tok = tok[1] =~ Grammar::TERMINALS ? tok[1] : tok[0]
-        error,reply = rc.processSingleToken(tok.strip)
+        token = tok[1] =~ Grammar::TERMINALS ? tok[1] : tok[0]
+        rc.addToStack(tok)
+        error,reply = rc.processSingleToken(token.strip)
         if error == 1
           puts "Not Accepted"
           exit
         end
       }
     }
-    puts "Accepted"
+    rc.printSymbolStack
   rescue
   ensure
     infile.close unless infile.nil?
