@@ -16,7 +16,7 @@ class RubyCompiler
     @parseStack = Grammar::DEFINITIONS["program"].split 
     @parseTable = {}
     @indexedGrammar = []
-    @symbolStack =[]
+    @symbolStack =[['KEYWORD', 'PROGRAM']]
     @symbolTree = []
     @blockIndex = 0
     @functionIndex = 0
