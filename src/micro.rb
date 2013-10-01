@@ -41,6 +41,7 @@ def main()
       }
     }
     rc.printSymbolTable
+  rescue
   ensure
     infile.close unless infile.nil?
   end
