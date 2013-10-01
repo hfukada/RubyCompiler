@@ -1,65 +1,110 @@
 require './src/grammar'
 
 class RubyCompiler
-  def addToStack(token)
+  def addToStack(token, doDecls)
     if token[0] =~ Grammar::DESCRIBERS or token[1] =~ Grammar::SYMBOLPUSH
-      lastPushed = @symbolStack.last
-      #if ( lastPushed == 'FUNCTION' or lastPushed == 'PROGRAM' ) and token[0] == 'IDENTIFIER'
-      #  @symbolStack += [token]
-      #else
-      #  if shouldInclude(token)
-      if !(token[0] == 'IDENTIFIER' and shouldIgnore?(token[1]))
-        @symbolStack += [token]
-      end
-      #  end
-      #end
-    end
-  end
-  def shouldIgnore?(token)
-    i = @symbolStack.size-1
-    while @symbolStack[i][0] == 'IDENTIFIER'
-      i-=1
-    end
-    return !(@symbolStack[i][1] =~ Grammar::ALLOWIDENT) or @globals.include? token[1]
-  end
-  def printSymbolStack()
-    @symbolStack.each{|tok|
-      puts tok[1]
-    }
-    type = @symbolStack[0][1]
-    i = 0
-    blocknum = 1
-    isFuncDecl = 0
-    while i < @symbolStack.size
-      if @symbolStack[i][1] == 'PROGRAM'
-        i += 1
-        puts 'Symbol table GLOBAL'
-      else
-        if @symbolStack[i][1] =~ /^(INT|STRING|FLOAT|FUNCTION)$/
-          type = @symbolStack[i][1]
-          isFuncDecl = type=='FUNCTION' ? 1 : isFuncDecl
-        elsif @symbolStack[i][0] == 'IDENTIFIER'
-          if type != 'FUNCTION'
-            if @symbolStack[i+1][0] =~ Grammar::LITERALS
-              puts "name #{@symbolStack[i][1]} type #{type} value #{@symbolStack[i+1][1]}"
-              i += 1
-            else
-              puts "name #{@symbolStack[i][1]} type #{type}"
-            end
+      if token[0] == 'IDENTIFIER'
+        if doDecls == 1 and includeVariable?(token[1])
+          if @currType.class == {}.class
+            @currType[:name] = token[1]
+            @currType['vars'] = []
+            @currType['blocks'] = []
+            @symbolTree['funcs'] += [@currType]
+            @currType = ''
+            @blockPointer += [@symbolTree['funcs'].last]
+            @currentBlock = @symbolTree['funcs'].last
           else
-            puts "\nSymbol table #{@symbolStack[i][1]}"
+            @currentBlock['vars'] += [{:name => token[1], :type => @currType, :val => nil }]
           end
-        else
-          #begin stuff
-          if @symbolStack[i][1] =~ Grammar::NEWBLOCK && isFuncDecl == 0
-            puts "\nSymbol table BLOCK #{blocknum}"
-            blocknum += 1
-          elsif isFuncDecl == 1
-            isFuncDecl = 0
-          end
+        elsif doDecls == 1 and !includeVariable?(token[1])
+          return 1
         end
+      elsif token[0] =~ Grammar::LITERALS 
+        if doDecls == 1
+          @currentBlock['vars'].last[:val] = token[1]
+        end
+      elsif token[1] =~ /^(INT|STRING|FLOAT)$/
+        if @currType.class == {}.class
+          @currType[:returnType] = token[1]
+        else
+          @currType = token[1]
+        end
+      elsif token[1] == 'FUNCTION'
+        @currType = {:name => '', :returnType =>''}
+      elsif token[1] =~ Grammar::NEWBLOCK
+        @currentBlock['blocks'] += [{:name => "BLOCK #{@blockIndex}", 'vars' => [], 'blocks' => []}]
+        @blockIndex += 1
+        @blockPointer += [@currentBlock['blocks'].last]
+        @currentBlock = @blockPointer.last
       end
-      i+=1
+      if token[1] =~ Grammar::ENDBLOCK
+        @blockPointer.pop
+        @currentBlock = @blockPointer.last
+      end
+    end
+    0
+  end
+  def ignoreGlobals?()
+    if @symbolTree['funcs'].include?(@currentBlock)
+      return 1
+    end
+    return 0
+  end
+  def includeVariable?(token)
+    ignoreGlobals = ignoreGlobals?
+    if ignoreGlobals == 0
+      if @symbolTree['vars'].empty?
+        return true
+      end
+      @symbolTree['vars'].each{|global|
+        if global[:name].nil?
+          return true
+        end
+        if global[:name] == token
+          return false
+        end
+      }
+    end
+    if @currentBlock['vars'].empty?
+      return true
+    else
+      @currentBlock['vars'].each{|varhash|
+        if varhash[:name] == token
+          return false
+        end
+      }
+    end
+    true
+  end
+
+  def printSymbolTable(level = @symbolTree, label = 'GLOBAL', indent = 0)
+    if level.nil?
+      return
+    end
+    spacing = ' ' * indent
+    spacing = ''
+    print "Symbol table #{label}\r\n"
+
+    if !level['vars'].nil?
+      level['vars'].each{|var|
+        if var[:val].nil?
+          print "name #{var[:name]} type #{var[:type]}\r\n"
+        else
+          print "name #{var[:name]} type #{var[:type]} value #{var[:val]}\r\n"
+        end
+      }
+    end
+    if !level['blocks'].nil?
+      level['blocks'].each{|block|
+        puts ''
+        printSymbolTable(block, block[:name], indent+1)
+      }
+    end
+    if level == @symbolTree and !@symbolTree['funcs'].nil?
+      @symbolTree['funcs'].each{|funcs|
+        puts ''
+        printSymbolTable(funcs, funcs[:name], indent+1)
+      }
     end
   end
 end

@@ -7,20 +7,22 @@ class RubyCompiler
   @parseStack
   @parseTable
   @indexedGrammar
-  @symbolStack
   @symbolTree
+  @blockPointer
+  @currType
   @blockIndex
-  @functionIndex
-  @globals
 
   def initialize
     @parseStack = Grammar::DEFINITIONS["program"].split 
     @parseTable = {}
     @indexedGrammar = []
-    @symbolStack =[['KEYWORD', 'PROGRAM']]
-    @symbolTree = []
-    @blockIndex = 0
-    @functionIndex = 0
+    @symbolTree= { 'vars' => [], 'funcs' => [] }
+    @blockPointer= [@symbolTree]
+    @currentBlock= @blockPointer.last
+    @currentVariables = []
+
+    @currType = ''
+    @blockIndex = 1
   end
 
 end
