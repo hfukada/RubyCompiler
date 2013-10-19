@@ -1,0 +1,44 @@
+;Current temp: null
+;IR Code: 
+;STOREI 1 $T1
+;STOREI $T1 a Incoming: [STOREI 1 $T1] 
+;STOREI 2 $T2 Incoming: [STOREI $T1 a] 
+;STOREI $T2 b Incoming: [STOREI 2 $T2] 
+;READI c Incoming: [STOREI $T2 b] 
+;READI d Incoming: [READI c] 
+;MULTI a c $T3 Incoming: [READI d] 
+;MULTI b d $T4 Incoming: [MULTI a c $T3] 
+;ADDI $T3 $T4 $T5 Incoming: [MULTI b d $T4] 
+;STOREI $T5 e Incoming: [ADDI $T3 $T4 $T5] 
+;WRITEI c Incoming: [STOREI $T5 e] 
+;WRITES newline Incoming: [WRITEI c] 
+;WRITEI d Incoming: [WRITES newline] 
+;WRITES newline Incoming: [WRITEI d] 
+;WRITEI e Incoming: [WRITES newline] 
+;WRITES newline Incoming: [WRITEI e] 
+var a
+var b
+var c
+var d
+var e
+str newline "\n"
+move 1 r0 ;STOREI 1 $T1
+move r0 a ;STOREI $T1 a
+move 2 r1 ;STOREI 2 $T2
+move r1 b ;STOREI $T2 b
+sys readi c ;READI c
+sys readi d ;READI d
+move a r2 ;MULTI a c $T3
+muli c r2 ;MULTI a c $T3
+move b r3 ;MULTI b d $T4
+muli d r3 ;MULTI b d $T4
+move r2 r4 ;ADDI $T3 $T4 $T5
+addi r3 r4 ;ADDI $T3 $T4 $T5
+move r4 e ;STOREI $T5 e
+sys writei c ;WRITEI c
+sys writes newline ;WRITES newline
+sys writei d ;WRITEI d
+sys writes newline ;WRITES newline
+sys writei e ;WRITEI e
+sys writes newline ;WRITES newline
+sys halt
