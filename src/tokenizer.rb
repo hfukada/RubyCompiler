@@ -1,19 +1,19 @@
 class RubyCompiler
   # method to tokenize a line
-  def tokenizeLine(cleanline)
+  def tokenizeLine()
     currFront,i = 0,0
     found=false
     tokens = []
-    while i < cleanline.length
+    while i < @currline.length
       found = false
-      if !(cleanline[i] =~ (Grammar::SINGLEOP)).nil?
-        basetok = cleanline[currFront..i-1]
+      if !(@currline[i] =~ (Grammar::SINGLEOP)).nil?
+        basetok = @currline[currFront..i-1]
 
         if !(basetok =~ /^;/).nil?
           tokens << [ "OPERATOR", ";" ]
           break
         end
-        if (cleanline[i] =~ /"|'/).nil?
+        if (@currline[i] =~ /"|'/).nil?
           if !(basetok.strip =~ (Grammar::KEYWORD)).nil?
             tokens << [ "KEYWORD", "#{basetok.strip}" ]
             found = true
@@ -28,18 +28,18 @@ class RubyCompiler
             end
             found = true
           end
-          if cleanline[i] != ' '
-            if !(cleanline[i..i+1] =~ (Grammar::OPERATOR)).nil?
-              tokens << ["OPERATOR" , "#{cleanline[i..i+1]}"]
+          if @currline[i] != ' '
+            if !(@currline[i..i+1] =~ (Grammar::OPERATOR)).nil?
+              tokens << ["OPERATOR" , "#{@currline[i..i+1]}"]
               i += 1
-            elsif !(cleanline[i] =~ (Grammar::OPERATOR)).nil? 
-              tokens << ["OPERATOR", "#{cleanline[i]}"]
+            elsif !(@currline[i] =~ (Grammar::OPERATOR)).nil? 
+              tokens << ["OPERATOR", "#{@currline[i]}"]
             end
             found = true
           end
         else
-          endQuo = cleanline.index(/'|"/,i+1)
-          tokens << [ "STRINGLITERAL", "#{cleanline[i..endQuo]}"]
+          endQuo = @currline.index(/'|"/,i+1)
+          tokens << [ "STRINGLITERAL", "#{@currline[i..endQuo]}"]
           i = endQuo
           found = true
         end

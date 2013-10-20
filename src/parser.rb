@@ -112,11 +112,18 @@ class RubyCompiler
     if Grammar::TERMINAL_LIST.include?(popped)
       # If the grammar isn't literal, then it must match a keyword or operation verbosely; token[1]
       # if the grammar is literal, then it only need to match the token type; token[0]
+      if !@baseExprStack.nil? and token != ';'
+        @baseExprStack.push(popped)
+      end
       return ( popped == token ) ? 0 : 1 , "good"
     else
       # for each of the choices (in an OR situation), split, and decide
       # popped = a symbol/nonterminal
       # token[1] = attempt to match
+
+      if popped == "base_stmt"
+        @baseExprStack = []
+      end
 
       prediction = @parseTable[popped][token]
       if prediction == nil

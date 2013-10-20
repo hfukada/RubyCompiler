@@ -8,37 +8,46 @@ class RubyCompiler
   @parseStack
   @parseTable
   @indexedGrammar
-  @symbolTree
-  @blockPointer
+
   @currType
   @blockIndex
+  @infile
+  @currline
+  @baseExprStack
+
+  @usableVariablesStack
+  @scopeStack
+  @currMode
+  @sillyPrintStack
+
 
   def initialize(file)
     @parseStack = Grammar::DEFINITIONS["program"].split 
     @parseTable = {}
     @indexedGrammar = []
-    @symbolTree= { 'vars' => [], 'funcs' => [] }
-    @blockPointer= [@symbolTree]
-    @currentBlock= @blockPointer.last
-    @currentVariables = []
 
     @currType = ''
-    @blockIndex = 1
     @infile = File.new(file, "r")
     @currline = ''
+    @baseExprStack = nil
+
+    @usableVariablesStack = []
+    @scopeStack = [{ :name => 'GLOBAL', :begin => @usableVariablesStack.size}]
+    @currMode = {}
+    @sillyPrintStack = []
+
     createParseTable()
   end
   def compile()
     begin
       lastImportant = ''
       @infile.each_line {|line|
-        @currline = line
         ignoreLine = 1
         doDecls = 1
-        cleanline = (line.include?('--')? line[0,line.index('--')] : line)
-        cleanline.lstrip! 
+        @currline= (line.include?('--')? line[0,line.index('--')] : line)
+        @currline.lstrip!
 
-        tokens = self.tokenizeLine(cleanline)
+        tokens = self.tokenizeLine()
 
         if !tokens.empty? and tokens[0][1] =~ /^(FUNCTION|INT|FLOAT|STRING|IF|ELSIF|ENDIF|DO|WHILE|END)$/
           ignoreLine = 0
@@ -51,8 +60,9 @@ class RubyCompiler
           declError = 0
           token = tok[1] =~ Grammar::TERMINALS ? tok[1] : tok[0]
           error,reply = self.processSingleToken(token.strip)
+
           if ignoreLine == 0
-            declError = self.addToStack(tok, doDecls)
+            declError = self.symStack(tok, doDecls)
           end
           if error == 1
             puts "Not Accepted"
@@ -62,8 +72,13 @@ class RubyCompiler
             print "DECLARATION ERROR #{tok[1]}\r\n"
             exit
           end
+
+          if !@baseExprStack.nil?
+            self.generateCode
+          end
         }
       }
+      self.sillyPrintStack
     rescue => e
       puts e.message
       puts e.backtrace.inspect
