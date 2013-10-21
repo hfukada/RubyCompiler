@@ -9,7 +9,7 @@ class RubyCompiler
         @baseExprStack.delete(',')
         operation = @baseExprStack.shift
         
-        operation += self.getType(@baseExprStack[0]) == 'INT' ? 'I' : 'F'
+        operation += self.getType(@baseExprStack[0]) == 'INT' ? 'I' : 'r'
         @baseExprStack.each{|x|
           addIR(operation, nil, nil, x)
         }
@@ -22,15 +22,15 @@ class RubyCompiler
         @baseExprStack.push resultReg
       elsif @baseExprStack.last == ';'
         resultReg = generateSegment(@baseExprStack[2..@baseExprStack.size-2])
-        if self.getType(@baseExprStack[2]) == -1
+        if isLiteral?(@baseExprStack[2])
           op = "STORE"
-          op += self.getType(@baseExprStack[0]) == 'INT' ? 'I' : 'F'
+          op += self.getType(@baseExprStack[0]) == 'INT' ? 'I' : 'r'
           reg = chooseRegister
           addIR(op, resultReg, nil, reg)
           addIR(op, reg, nil, @baseExprStack[0])
         else
           op = "STORE"
-          op += self.getType(@baseExprStack[0]) == 'INT' ? 'I' : 'F'
+          op += self.getType(@baseExprStack[0]) == 'INT' ? 'I' : 'r'
           reg = chooseRegister
           addIR(op, resultReg, nil, @baseExprStack[0])
         end
@@ -49,13 +49,13 @@ class RubyCompiler
       #  op1 = segment[i-1]
       #  op2 = segment[i+1]
       #  register = chooseRegister
-      #  op += self.getType(op1) == 'INT' ? 'I' : 'F'
+      #  op += self.getType(op1) == 'INT' ? 'I' : 'r'
       #  self.addIR(op, op1, op2, register)
 
       #end
       if temp.last == '*' or temp.last == '/'
         # pop off the mult op
-        op = temp.pop == '*' ? 'mul' : 'div'
+        op = temp.pop == '*' ? 'MUL' : 'DIV'
         op1 = temp.pop
         op2 = tok
 
@@ -66,7 +66,7 @@ class RubyCompiler
           op2 = loadLiteral(op2)
         end
         register = chooseRegister
-        op += self.getType(op1) == 'INT' ? 'I' : 'F'
+        op += self.getType(@baseExprStack[0]) == 'INT' ? 'I' : 'r'
 
         self.addIR(op, op1, op2, register)
 
@@ -77,9 +77,9 @@ class RubyCompiler
     }
     #printA(temp)
     while temp.size > 1 do
-      op1 = temp.pop
-      op = temp.pop
-      op2 = temp.pop
+      op1 = temp.shift
+      op = temp.shift
+      op2 = temp.shift
 
       #puts "op :#{op}| op1 :#{op1}| op2 :#{op2}"
 
@@ -92,9 +92,9 @@ class RubyCompiler
       register = chooseRegister
       op = op == '+' ? 'ADD' : 'SUB'
 
-      op += self.getType(op1) == 'INT' ? 'I' : 'F'
+      op += self.getType(@baseExprStack[0]) == 'INT' ? 'I' : 'r'
       self.addIR(op, op1, op2, register)
-      temp.push(register)
+      temp.unshift(register)
     end
     temp.last
   end
@@ -108,10 +108,11 @@ class RubyCompiler
   end
   def printIRStack()
     @IRStack.each{|instr|
-      printOP(instr)
+      printOP(instr,true)
     }
   end
-  def printOP(instr)
+  def printOP(instr, comment = false)
+    print ';              ' if comment
     if instr[:op1].nil?
       puts "#{instr[:opcode]} #{instr[:result]}"
     elsif instr[:op2].nil?
@@ -144,14 +145,22 @@ class RubyCompiler
   def IRtoASM()
     code = []
     @IRStack.each{|line|
+      printOP(line, true)
       if line[:opcode] == 'var' or line[:opcode] == 'str'
         printOP(line)
       elsif line[:opcode].include?('STORE')
         line[:opcode] = 'move'
         printOP(line)
-      elsif
-        
+      elsif line[:opcode] =~ /WRITE|READ/
+        temp = {:opcode => 'sys', :op1 => line[:opcode].downcase, :result => line[:result]}
+        printOP(temp)
+      elsif line[:opcode] =~ /^(ADD|SUB|MUL|DIV)/
+        temp = {:opcode => 'move', :op1 => line[:op1], :result => line[:result]}
+        printOP(temp)
+        temp = {:opcode => line[:opcode].downcase, :op1 => line[:op2], :result => line[:result]}
+        printOP(temp)
       end
     }
+    puts "sys halt"
   end
 end

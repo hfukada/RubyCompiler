@@ -89,6 +89,7 @@ class RubyCompiler
       }
       #self.sillyPrintStack
       self.printIRStack
+      self.IRtoASM
     rescue => e
       puts e.message
       puts e.backtrace.inspect
