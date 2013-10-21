@@ -44,15 +44,6 @@ class RubyCompiler
       return segment[0]
     end
     segment.each{|tok|
-      #if segment[i] == '*' or segment[i] == '/'
-      #  op = segment[i] == '*' ? 'MUL' : 'DIV'
-      #  op1 = segment[i-1]
-      #  op2 = segment[i+1]
-      #  register = chooseRegister
-      #  op += self.getType(op1) == 'INT' ? 'I' : 'r'
-      #  self.addIR(op, op1, op2, register)
-
-      #end
       if temp.last == '*' or temp.last == '/'
         # pop off the mult op
         op = temp.pop == '*' ? 'MUL' : 'DIV'
