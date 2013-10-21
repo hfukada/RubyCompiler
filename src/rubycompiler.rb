@@ -20,6 +20,10 @@ class RubyCompiler
   @currMode
   @sillyPrintStack
 
+  @IRStack
+  @regindex
+  @usedRegisters
+
 
   def initialize(file)
     @parseStack = Grammar::DEFINITIONS["program"].split 
@@ -36,6 +40,10 @@ class RubyCompiler
     @currMode = {}
     @sillyPrintStack = []
 
+    @IRStack = []
+
+    @regindex = -1
+    @usedRegisters = []
     createParseTable()
   end
   def compile()
@@ -59,7 +67,7 @@ class RubyCompiler
         tokens.each{|tok|
           declError = 0
           token = tok[1] =~ Grammar::TERMINALS ? tok[1] : tok[0]
-          error,reply = self.processSingleToken(token.strip)
+          error,reply = self.processSingleToken(token.strip, tok[1].strip)
 
           if ignoreLine == 0
             declError = self.symStack(tok, doDecls)
@@ -77,8 +85,10 @@ class RubyCompiler
             self.generateCode
           end
         }
+        @baseExprStack = nil
       }
-      self.sillyPrintStack
+      #self.sillyPrintStack
+      self.printIRStack
     rescue => e
       puts e.message
       puts e.backtrace.inspect

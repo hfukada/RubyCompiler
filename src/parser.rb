@@ -103,7 +103,7 @@ class RubyCompiler
 
   # parseStack, the current stack string we are looking at
   # token, (token[0] info:token[1] value)
-  def processSingleToken(token)
+  def processSingleToken(token,value)
     popped = ""
     popped = @parseStack.shift
     while (popped == "empty")
@@ -112,8 +112,8 @@ class RubyCompiler
     if Grammar::TERMINAL_LIST.include?(popped)
       # If the grammar isn't literal, then it must match a keyword or operation verbosely; token[1]
       # if the grammar is literal, then it only need to match the token type; token[0]
-      if !@baseExprStack.nil? and token != ';'
-        @baseExprStack.push(popped)
+      if !@baseExprStack.nil?
+        @baseExprStack.push(value)
       end
       return ( popped == token ) ? 0 : 1 , "good"
     else
@@ -139,7 +139,7 @@ class RubyCompiler
       interp = @indexedGrammar[prediction][:interp]
       @parseStack = interp.split + @parseStack
 
-      result = processSingleToken(token)
+      result = processSingleToken(token,value)
 
     end
     return result, "good"

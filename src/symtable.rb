@@ -7,6 +7,19 @@ class RubyCompiler
         if doDecls == 1 and includeVar?(token[1])
           if @currMode[:type] == 'FUNCTION'
           # new function here
+            if @scopeStack.size == 1
+              # print globals
+              @usableVariablesStack.each{|var|
+                type = var[:type] == "STRING" ? 'str' : 'var'
+                if !var[:value].nil?
+                  #puts "#{type} #{var[:name]} #{var[:value]}"
+                  @IRStack.push({:opcode => type , :op1 => var[:name], :result => var[:value]})
+                else
+                  @IRStack.push({:opcode => type , :op1 => var[:name]})
+                  #puts "#{type} #{var[:name]}"
+                end
+              }
+            end
             @scopeStack.push({ :name => token[1], :begin => @usableVariablesStack.size})
             @currMode= {}
           else
@@ -18,7 +31,7 @@ class RubyCompiler
         end
       elsif token[0] =~ Grammar::LITERALS 
         if doDecls == 1
-          @usableVariablesStack.last[:val] = token[1]
+          @usableVariablesStack.last[:value] = token[1]
         end
       elsif token[1] =~ /^(INT|STRING|FLOAT)$/
         if @currMode[:type] == 'FUNCTION'
@@ -50,5 +63,15 @@ class RubyCompiler
   end
   def includeVar?(token)
     return !(@usableVariablesStack.map{|h| h['name']}.flatten.include?(token))
+  end
+  def getType(name)
+    i = @usableVariablesStack.size - 1
+    while i >= 0 do 
+      if name == @usableVariablesStack[i][:name]
+        return @usableVariablesStack[i][:type]
+      end
+      i -= 1
+    end
+    return -1
   end
 end
