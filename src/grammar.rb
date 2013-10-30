@@ -9,6 +9,7 @@ end
 class Grammar 
     KEYWORD = /^(PROGRAM|BEGIN|END|FUNCTION|READ|WRITE|IF|ELSIF|ENDIF|DO|WHILE|CONTINUE|BREAK|RETURN|INT|VOID|STRING|FLOAT|TRUE|FALSE)$/
     OPERATOR = /^(:=|\+|-|\*|\/|=|!=|<|>|\(|\)|;|,|<=|>=)$/
+    COMPOP = /^(=|!=|<|>|<=|>=)$/
     STRINGLITERAL = /^(".*")$/
     INTLITERAL = /^([0-9]+)$/
     FLOATLITERAL = /^([0-9]*\.[0-9]+)$/
@@ -75,9 +76,10 @@ class Grammar
     "addop"            => "+|-",
     "mulop"            => "*|/",
 
-    "if_stmt"          => "IF ( cond ) decl stmt_list else_part",
-    "else_part"        => "ELSIF ( cond ) decl stmt_list else_part | ENDIF",
+    "if_stmt"          => "IF ( cond condend decl stmt_list else_part",
+    "else_part"        => "ELSIF ( cond condend decl stmt_list else_part | ENDIF",
     "cond"             => "expr compop expr|TRUE|FALSE",
+    "condend"          => ")",
     "compop"           => "<|>|=|!=|<=|>=",
 
     "do_while_stmt"    => "DO decl stmt_list WHILE ( cond ) ;" }

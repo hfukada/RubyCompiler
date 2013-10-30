@@ -72,6 +72,16 @@ class RubyCompiler
       end
       i -= 1
     end
-    return -1
+    return name.include?('.')? 'FLOAT' : 'INT'
+  end
+  def isLiteral?(name)
+    i = @usableVariablesStack.size - 1
+    while i >= 0 do 
+      if name == @usableVariablesStack[i][:name]
+        return false
+      end
+      i -= 1
+    end
+    return true
   end
 end

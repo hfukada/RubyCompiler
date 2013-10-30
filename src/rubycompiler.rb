@@ -13,7 +13,10 @@ class RubyCompiler
   @blockIndex
   @infile
   @currline
+
   @baseExprStack
+  @baseIfStack
+  @baseWhileStack
 
   @usableVariablesStack
   @scopeStack
@@ -22,8 +25,8 @@ class RubyCompiler
 
   @IRStack
   @regindex
+  @labelindex
   @usedRegisters
-
 
   def initialize(file)
     @parseStack = Grammar::DEFINITIONS["program"].split 
@@ -34,6 +37,7 @@ class RubyCompiler
     @infile = File.new(file, "r")
     @currline = ''
     @baseExprStack = nil
+    @baseIfStack = nil
 
     @usableVariablesStack = []
     @scopeStack = [{ :name => 'GLOBAL', :begin => @usableVariablesStack.size}]
@@ -41,9 +45,13 @@ class RubyCompiler
     @sillyPrintStack = []
 
     @IRStack = []
+    @baseWhileStack = []
 
     @regindex = -1
-    @usedRegisters = []
+    @labelindex = 0
+    @usedRegisters = {}
+    @labelStack = []
+    @blockIndex = 1
     createParseTable()
   end
   def compile()
@@ -82,10 +90,19 @@ class RubyCompiler
           end
 
           if !@baseExprStack.nil?
-            self.generateCode
+            self.generateBaseExprCode
           end
+          if !@baseIfStack.nil?
+            self.generateIfCode
+          end
+          if !@baseWhileStack.nil?
+            self.generateWhileCode
+          end
+
         }
+        @baseIfStack= nil
         @baseExprStack = nil
+        @baseWhileStack = nil
       }
       #self.sillyPrintStack
       self.printIRStack

@@ -113,7 +113,15 @@ class RubyCompiler
       # If the grammar isn't literal, then it must match a keyword or operation verbosely; token[1]
       # if the grammar is literal, then it only need to match the token type; token[0]
       if !@baseExprStack.nil?
-        @baseExprStack.push(value)
+        @baseExprStack.push value
+      elsif !@baseIfStack.nil?
+        @baseIfStack.push value
+      elsif value == 'WHILE' or value == 'DO' or (!@baseWhileStack.nil? and @baseWhileStack[0] == 'WHILE')
+        if @baseWhileStack.nil?
+          @baseWhileStack=[value]
+        else
+          @baseWhileStack.push value
+        end
       end
       return ( popped == token ) ? 0 : 1 , "good"
     else
@@ -123,6 +131,8 @@ class RubyCompiler
 
       if popped == "base_stmt"
         @baseExprStack = []
+      elsif popped == "if_stmt" or popped == "else_part"
+        @baseIfStack = []
       end
 
       prediction = @parseTable[popped][token]
