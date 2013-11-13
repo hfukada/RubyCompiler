@@ -1,6 +1,16 @@
 class RubyCompiler
+  def generateFuncCode(parsedToken)
+    if parsedToken == [')','func_decl_param'] #symbolizes end of function declation
+      @currFunc = @scopeStack.last[:name]
+      addIR("LABEL", nil, nil, @currFunc)
+      addIR("LINK", nil, nil, nil)
+    elsif parsedToken == ['END', 'func_decl_param']
+      addIR("UNLNK",nil,nil,nil)
+    end
+  end
   def generateWhileCode()
-    if @baseWhileStack.last =~ Grammar::COMPOP
+    tokenValues = @baseWhileStack.map{|k| k[0]}
+    if baseWhileStack.last =~ Grammar::COMPOP
       @compop = @baseWhileStack.last
       @compreg1 = generateAnyExpr(@baseWhileStack[2..@baseWhileStack.size-2])
     elsif @baseWhileStack.last == 'DO'
@@ -22,7 +32,7 @@ class RubyCompiler
        @compreg1 = generateAnyExpr(@baseIfStack[2..@baseIfStack.size-2])
     # elsif @parseStack[0] == 'condend' or @currline =~ /^(ENDIF)$/
     elsif (@baseIfStack.count('(') === @baseIfStack.count(')') and @baseIfStack.count('(') > 0 ) or @currline =~ /^(ENDIF)$/
-      if @currline.include?("ENDIF") 
+      if @currline.include?("ENDIF")
         # end if label
 
         addIR("LABEL", nil, nil, @labelStack.pop)
@@ -69,6 +79,8 @@ class RubyCompiler
       end
     end
   end
+
+
   def addLabel()
     @labelStack.push "label#{@labelindex}"
     @labelindex += 1
@@ -105,10 +117,14 @@ class RubyCompiler
       end
     end
   end
+
+  def functionCall(expr)
+
+  end
   def generateAnyExpr(expr)
     exprStack = []
     type=getExprType(expr)
-    while (expr.size != 0) do 
+    while (expr.size != 0) do
       exprStack.push(expr.shift)
       if exprStack.last == ')'
         resultReg = generateExprSegment(exprStack[exprStack.rindex('(')+1..exprStack.size-2], type)
@@ -176,28 +192,43 @@ class RubyCompiler
     end
     temp.last
   end
+
   def addIR(op, op1, op2, dest)
-    @IRStack.push({:opcode => op, :op1 => op1, :op2 => op2, :result => dest})
+    if @IRStack[@currFunc].nil?
+      @IRStack[@currFunc] = [{:opcode => op, :op1 => op1, :op2 => op2, :result => dest}]
+    else
+      @IRStack[@currFunc].push({:opcode => op, :op1 => op1, :op2 => op2, :result => dest})
+    end
   end
+
   def chooseRegister(type, hash)
     @regindex+=1
     @usedRegisters[hash] = {:type => type , :reg => "r#{@regindex}"}
     "r#{@regindex}"
   end
   def printIRStack()
-    @IRStack.each{|instr|
-      printOP(instr,true)
+    @IRStack.each{|func, nodes|
+      puts ";     #{func}"
+      nodes.each{|instr|
+        printOP(instr,true)
+      }
     }
   end
   def printOP(instr, comment = false)
     print ';              ' if comment
-    if instr[:op1].nil?
-      puts "#{instr[:opcode]} #{instr[:result]}"
-    elsif instr[:op2].nil?
-      puts "#{instr[:opcode]} #{instr[:op1]} #{instr[:result]}"
-    else
-      puts "#{instr[:opcode]} #{instr[:op1]} #{instr[:op2]} #{instr[:result]}"
-    end
+    instr.delete_if{|k,v| v.nil?}
+    puts instr.values.join(' ')
+    #instr.each{|code, val|
+    #  print "#{val} " if instr
+    #}
+    #print "\n"
+    #if instr[:op1].nil?
+    #  puts "#{instr[:opcode]} #{instr[:result]}"
+    #elsif instr[:op2].nil?
+    #  puts "#{instr[:opcode]} #{instr[:op1]} #{instr[:result]}"
+    #else
+    #  puts "#{instr[:opcode]} #{instr[:op1]} #{instr[:op2]} #{instr[:result]}"
+    #end
   end
   def getIRComp(op)
     case op
@@ -242,7 +273,7 @@ class RubyCompiler
     #puts "#{lit} is a literal yo"
     register = chooseRegister(lit.include?('.')? 'FLOAT' : 'INT', "#{lit}")
     if lit.include?('.')
-      addIR("STOREF",lit, nil, register) 
+      addIR("STOREF",lit, nil, register)
     else
       addIR("STOREI", lit, nil, register)
     end
@@ -259,34 +290,37 @@ class RubyCompiler
     end
   end
   def IRtoASM()
-    code = []
-    @IRStack.each{|line|
-      if line[:opcode] == 'var' or line[:opcode] == 'str'
-        printOP(line)
-      elsif line[:opcode].include?('STORE')
-        temp = {:opcode => 'move', :op1 => line[:op1].downcase, :result => line[:result]}
-        printOP(temp)
-      elsif line[:opcode] =~ /WRITE|READ/
-        temp = {:opcode => 'sys', :op1 => line[:opcode].downcase, :result => line[:result]}
-        printOP(temp)
-      elsif line[:opcode] =~ /^(ADD|SUB|MUL|DIV)/
-        temp = {:opcode => 'move', :op1 => line[:op1], :result => line[:result]}
-        printOP(temp)
-        temp = {:opcode => line[:opcode].downcase, :op1 => line[:op2], :result => line[:result]}
-        printOP(temp)
-      elsif line[:opcode] =~ /^(LT|GT|LE|GE|EQ|NE)/
-        temp = {:opcode => "cmp#{line[:opcode][-1]}".downcase, :op1 => line[:op1].downcase, :result => line[:op2]}
-        printOP(temp)
-        temp = {:opcode => "j#{line[:opcode][0,2]}".downcase, :result => line[:result]}
-        printOP(temp)
-      elsif line[:opcode] =~ /^(LABEL)/
-        temp = {:opcode => line[:opcode].downcase, :result => line[:result]}
-        printOP(temp)
-      elsif line[:opcode] == 'JUMP'
-        temp = {:opcode => 'jmp', :result => line[:result]}
-        printOP(temp)
+    mainlink = 0
+    @IRStack.each{|func, nodes|
+      if !@IRStack.keys.index('main').nil? and func != "GLOBAL" and mainlink == 0
+        printOP({:opcode => 'jsr', :result => 'main'})
+        printOP({:opcode => 'sys', :result => 'halt'})
+        mainlink = 1
       end
+      print "\n"
+      nodes.each{|line|
+        if line[:opcode] =~ /(var|str|LINK|UNLNK|RET)/
+          temp = line
+          temp[:opcode].downcase!
+        elsif line[:opcode].include?('STORE')
+          temp = {:opcode => 'move', :op1 => line[:op1].downcase, :result => line[:result]}
+        elsif line[:opcode] =~ /WRITE|READ/
+          temp = {:opcode => 'sys', :op1 => line[:opcode].downcase, :result => line[:result]}
+        elsif line[:opcode] =~ /^(ADD|SUB|MUL|DIV)/
+          temp = {:opcode => 'move', :op1 => line[:op1], :result => line[:result]}
+          printOP(temp)
+          temp = {:opcode => line[:opcode].downcase, :op1 => line[:op2], :result => line[:result]}
+        elsif line[:opcode] =~ /^(LT|GT|LE|GE|EQ|NE)/
+          temp = {:opcode => "cmp#{line[:opcode][-1]}".downcase, :op1 => line[:op1].downcase, :result => line[:op2]}
+          printOP(temp)
+          temp = {:opcode => "j#{line[:opcode][0,2]}".downcase, :result => line[:result]}
+        elsif line[:opcode] =~ /^(LABEL)/
+          temp = {:opcode => line[:opcode].downcase, :result => line[:result]}
+        elsif line[:opcode] == 'JUMP'
+          temp = {:opcode => 'jmp', :result => line[:result]}
+        end
+        printOP(temp)
+      }
     }
-    puts "sys halt"
   end
 end

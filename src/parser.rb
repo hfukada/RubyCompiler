@@ -106,36 +106,36 @@ class RubyCompiler
   def processSingleToken(token,value)
     popped = ""
     popped = @parseStack.shift
-    while (popped == "empty")
+    while (popped[0] == "empty")
       popped = @parseStack.shift
     end
-    if Grammar::TERMINAL_LIST.include?(popped)
+    if Grammar::TERMINAL_LIST.include?(popped[0])
       # If the grammar isn't literal, then it must match a keyword or operation verbosely; token[1]
       # if the grammar is literal, then it only need to match the token type; token[0]
       if !@baseExprStack.nil?
-        @baseExprStack.push value
+        @baseExprStack.push [value, popped[1]]
       elsif !@baseIfStack.nil?
-        @baseIfStack.push value
+        @baseIfStack.push [value, popped[1]]
       elsif value == 'WHILE' or value == 'DO' or (!@baseWhileStack.nil? and @baseWhileStack[0] == 'WHILE')
         if @baseWhileStack.nil?
-          @baseWhileStack=[value]
+          @baseWhileStack=[value, popped[1]]
         else
-          @baseWhileStack.push value
+          @baseWhileStack.push [value,popped[1]]
         end
       end
-      return ( popped == token ) ? 0 : 1 , "good"
+      return ( popped[0] == token ) ? popped : "error"
     else
       # for each of the choices (in an OR situation), split, and decide
       # popped = a symbol/nonterminal
       # token[1] = attempt to match
 
-      if popped == "base_stmt"
+      if popped[0] == "base_stmt"
         @baseExprStack = []
-      elsif popped == "if_stmt" or popped == "else_part"
+      elsif popped[0] == "if_stmt" or popped[0] == "else_part"
         @baseIfStack = []
       end
 
-      prediction = @parseTable[popped][token]
+      prediction = @parseTable[popped[0]][token]
       if prediction == nil
         @parseTable.each{|key, value|
           @parseTable[key].each{|symbol, inter|
@@ -143,15 +143,14 @@ class RubyCompiler
           }
         }
         puts @parseStack
-        puts "Could not parse: |#{popped}| x |#{token}|"
-        return 1, "Could not parse: |#{popped}| x |#{token}|"
+        puts "Could not parse: |#{popped[0]}| x |#{token}|"
+        return 1, "Could not parse: |#{popped[0]}| x |#{token}|"
       end
       interp = @indexedGrammar[prediction][:interp]
-      @parseStack = interp.split + @parseStack
+      @parseStack = interp.split.zip([popped[0]]*interp.split.size) + @parseStack
 
-      result = processSingleToken(token,value)
+      return processSingleToken(token,value)
 
     end
-    return result, "good"
   end
 end

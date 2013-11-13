@@ -13,10 +13,12 @@ class RubyCompiler
   @blockIndex
   @infile
   @currline
+  @currFunc
 
   @baseExprStack
   @baseIfStack
   @baseWhileStack
+  @baseFunctionStack
 
   @usableVariablesStack
   @scopeStack
@@ -29,7 +31,7 @@ class RubyCompiler
   @usedRegisters
 
   def initialize(file)
-    @parseStack = Grammar::DEFINITIONS["program"].split 
+    @parseStack = Grammar::DEFINITIONS["program"].split.zip(['program']*(Grammar::DEFINITIONS["program"].split).size)
     @parseTable = {}
     @indexedGrammar = []
 
@@ -42,9 +44,10 @@ class RubyCompiler
     @usableVariablesStack = []
     @scopeStack = [{ :name => 'GLOBAL', :begin => @usableVariablesStack.size}]
     @currMode = {}
+    @currFunc = "GLOBAL"
     @sillyPrintStack = []
 
-    @IRStack = []
+    @IRStack = {}
     @baseWhileStack = []
 
     @regindex = -1
@@ -75,12 +78,12 @@ class RubyCompiler
         tokens.each{|tok|
           declError = 0
           token = tok[1] =~ Grammar::TERMINALS ? tok[1] : tok[0]
-          error,reply = self.processSingleToken(token.strip, tok[1].strip)
+          parsed_tok = self.processSingleToken(token.strip, tok[1].strip)
 
           if ignoreLine == 0
             declError = self.symStack(tok, doDecls)
           end
-          if error == 1
+          if parsed_tok == "error"
             puts "Not Accepted"
             exit
           end
@@ -88,6 +91,7 @@ class RubyCompiler
             print "DECLARATION ERROR #{tok[1]}\r\n"
             exit
           end
+
 
           if !@baseExprStack.nil?
             self.generateBaseExprCode
@@ -98,6 +102,7 @@ class RubyCompiler
           if !@baseWhileStack.nil?
             self.generateWhileCode
           end
+          self.generateFuncCode(parsed_tok)
 
         }
         @baseIfStack= nil

@@ -7,15 +7,17 @@ class RubyCompiler
         if doDecls == 1 and includeVar?(token[1])
           if @currMode[:type] == 'FUNCTION'
           # new function here
-            if @scopeStack.size == 1
+            if @currFunc  == "GLOBAL"
               # print globals
               @usableVariablesStack.each{|var|
                 type = var[:type] == "STRING" ? 'str' : 'var'
                 if !var[:value].nil?
                   #puts "#{type} #{var[:name]} #{var[:value]}"
-                  @IRStack.push({:opcode => type , :op1 => var[:name], :result => var[:value]})
+                  addIR(type, var[:name], nil, var[:value])
+                  #@IRStack.push({:opcode => type , :op1 => var[:name], :result => var[:value]})
                 else
-                  @IRStack.push({:opcode => type , :op1 => var[:name]})
+                  #@IRStack.push({:opcode => type , :op1 => var[:name]})
+                  addIR(type, nil, nil, var[:name])
                   #puts "#{type} #{var[:name]}"
                 end
               }
