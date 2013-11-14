@@ -75,12 +75,21 @@ class RubyCompiler
       }
     end
   end
+
   def includeVar?(token)
     return !(@usableVariablesStack.map{|h| h['name']}.flatten.include?(token))
   end
+  
+  def getReturnType(name)
+    idx = @scopeStack.map{|k| k[:name]}.index(name)
+    if !idx.nil?
+      return @scopeStack[idx][:returnType]
+    end
+    return -1
+  end
 
   def getTokenType(name)
-    idx = @scopeStack.map{|k| k[1]}.index(name)
+    idx = @scopeStack.map{|k| k[:name]}.index(name)
     if !idx.nil?
       return 'FUNCTION'
     end

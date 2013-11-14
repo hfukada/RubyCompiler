@@ -54,7 +54,7 @@ class RubyCompiler
 
     @regindex = -1
     @labelindex = 0
-    @usedRegisters = {}
+    @usedRegisters=[{:hash=>"", :dirty=>0, :time=>0 },{:hash=>"", :dirty=>0, :time=>0 },{:hash=>"", :dirty=>0, :time=>0 },{:hash=>"", :dirty=>0, :time=>0 }]
     @labelStack = []
     @blockIndex = 1
     createParseTable()
@@ -112,8 +112,8 @@ class RubyCompiler
         @baseWhileStack = nil
       }
       #self.sillyPrintStack
-      #self.printIRStack
-      #self.IRtoASM
+      self.printIRStack
+      self.IRtoASM
     rescue => e
       puts e.message
       puts e.backtrace.inspect

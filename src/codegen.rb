@@ -103,41 +103,98 @@ class RubyCompiler
         operation = tokenValues.shift
 
         operation += self.getType(tokenValues[0]) == 'INT' ? 'I' : 'r'
-        tokenValues.each{|x|
-          addIR(operation, nil, nil, x)
+        tokenValues.each{|var|
+          if operation.include?('WRITE')
+            dirtyRegisters!(var)
+          end
+          addIR(operation, nil, nil, var)
         }
       end
     else
       if tokenValues.last == ';'
-        type = self.getType(tokenValues[0])
-        generateExpr(tokenValues[2..tokenValues.size-2])
-        resultReg = generateAnyExpr(tokenValues[2..tokenValues.size-2], @baseExprStack[2..tokenValues.size-2])
-        op = "STORE"
-        op += type  == 'INT' ? 'I' : 'r'
-        reg = chooseRegister(type, tokenValues[2..tokenValues.size-2].join)
+        type = getType(tokenValues[0])
+        resultReg = generateExpr(tokenValues[2..tokenValues.size-2], type)
+        checkAndStore(resultReg, tokenValues[0], type)
+        #type = self.getType(tokenValues[0])
+        #generateExpr(tokenValues[2..tokenValues.size-2])
+        #resultReg = generateAnyExpr(tokenValues[2..tokenValues.size-2], @baseExprStack[2..tokenValues.size-2])
+        #op = "STORE"
+        #op += type  == 'INT' ? 'I' : 'r'
+        #reg = chooseRegister(type, tokenValues[2..tokenValues.size-2].join)
 
-        if (isLiteral?(tokenValues[2]) or getType(tokenValues[2]) != -1) and tokenValues.size == 4
-          addIR(op, resultReg, nil, reg)
-          addIR(op, reg, nil, tokenValues[0])
-        else
-          addIR(op, resultReg, nil, tokenValues[0])
-        end
+        #if (isLiteral?(tokenValues[2]) or getType(tokenValues[2]) != -1) and tokenValues.size == 4
+        #  addIR(op, resultReg, nil, reg)
+        #  addIR(op, reg, nil, tokenValues[0])
+        #else
+        #  addIR(op, resultReg, nil, tokenValues[0])
+        #end
       end
     end
   end
 
-  def generateExpr(expr)
+  def generateExpr(expr, type)
+    # handle the case, that the expr only has one thing
+    if expr.size == 1
+      return loadTok(expr[0], type)
+    end
+
     postfix = generatePostfix(expr)
+    exprStack = []
+    #printA postfix.map{|i|i[0]}
 
     while !postfix.empty?
       tok = postfix.shift
       case tok[1]
       when 'OPERATION'
-      when 'LITERAL'
-      when 'VARIABLE'
+        op2 = exprStack.pop
+        op1 = exprStack.pop
+        op = getOpText(tok[0], type)
+
+        # check if op1 op op2 exist in the registers already (the full shabangdang)
+        fullExprReg = symbolInRegister? "#{op1}#{tok[0]}#{op2}"
+        if fullExprReg != -1
+          # we are in luck that this expression exists!
+          # push the hash for this register on, and that's it!
+
+          exprStack.push("#{op1}#{tok[0]}#{op2}")
+        else
+          # check if ops exist in the registers
+
+          #puts "------"
+          #puts "#{op1}#{tok[0]}#{op2}"
+          #puts "------"
+          #printRegs
+          opArg1 = symbolInRegister? op1
+          opArg2 = symbolInRegister? op2
+
+          # if not in register and is a literal, load it
+          if opArg2 == -1 and isLiteral?(op2)
+            opArg2 = "r#{loadTok(op2, type)}"
+
+          # if not in register, but it is a variable we can directly use it for second argument
+          elsif opArg2 == -1 and !isLiteral?(op2)
+            opArg2 = op2
+          else
+            opArg2 = "r#{opArg2}"
+          end
+
+          # however, the second argument must be in the register
+          if opArg1 == -1
+            opArg1 = loadTok(op1, type)
+          end
+
+          # always store our result in arg2, because it is a guaranteed register
+          addIR(op, "r#{opArg1}", opArg2, "r#{opArg1}")
+
+          setReg(opArg1, "#{op1}#{tok[0]}#{op2}")
+          exprStack.push("#{op1}#{tok[0]}#{op2}")
+        end
+      when 'LITERAL', 'VARIABLE'
+        exprStack.push tok[0]
       else #FUNCTION
       end
     end
+    return opArg1
   end
 
   def generatePostfix(expr, strtIdx = 0, endIdx = expr.size)
@@ -154,12 +211,12 @@ class RubyCompiler
 
       elsif tokType == 'OPERATION'
         if opStack.empty?
-          opStack.push tok
+          opStack.push [tok,'OPERATION']
         else
           while !opStack.empty? and opOrder(opStack.last) > opOrder(tok) do
-            postfix.push [opStack.pop, 'OPERATION']
+            postfix.push opStack.pop
           end
-          opStack.push tok
+          opStack.push [tok, 'OPERATION']
         end
         i += 1
       else
@@ -177,7 +234,7 @@ class RubyCompiler
           # need to figure out how to handle generating IR code in the middle of expr to handle this.
 
           #end state should be ") expr#
-          postfix.push [tok, expr[i+2..parenEndIdx]
+          postfix.push [tok, expr[i+2..parenEndIdx]]
         end
         i += 1
       end
@@ -195,6 +252,21 @@ class RubyCompiler
     else
       1
     end
+  end
+
+  def getOpText(op, type)
+    case op
+    when '-'
+      opt = 'SUB'
+    when '+'
+      opt = 'ADD'
+    when '*'
+      opt = 'MUL'
+    else '/'
+      opt = 'DIV'
+    end
+
+    opt += type == 'INT' ? 'I' : 'R'
   end
 
   def generateAnyExpr(expr, exprwithgrammer=nil, force=false)
@@ -276,32 +348,157 @@ class RubyCompiler
     temp.last
   end
 
-  def addIR(op, op1, op2, dest)
-    if @IRStack[@currFunc].nil?
-      @IRStack[@currFunc] = [{:opcode => op, :op1 => op1, :op2 => op2, :result => dest}]
+  def chooseRegister(hash)
+    (0..@usedRegisters.size-1).each{|i|
+      if @usedRegisters[i][:hash] != ""
+        @usedRegisters[i][:time] += 1
+      end
+    }
+
+    # check for clean register with same value
+    reg = symbolInRegister?(hash)
+    return reg if reg != -1
+
+    # check for clean registers
+    (0..@usedRegisters.size-1).each{|i|
+      if @usedRegisters[i][:hash] == ""
+        setReg(i, hash)
+        return i
+      end
+    }
+
+    # make room for register, choose oldest register
+    # store the old register IF the hash is a simple variable
+    chosenReg = -1
+    (0..@usedRegisters.size-1).each{|i|
+      if @usedRegisters[i][:time] == 0 and @usedRegisters[i][:preserve] == 0
+        chosenReg = i
+        break
+      end
+    }
+    if chosenReg == -1
+      max = @usedRegisters.map{|k| k[:time] }.max
+      chosenReg = @usedRegisters.map{|k| k[:time]}.index(max)
+      chosenReg = @usedRegisters.map{|k| k[:time]}.index(@usedRegisters.map{|k| k[:time] }.max)
+    end
+    setReg(chosenReg, hash)
+  end
+
+  def setReg(regNum, hash="", preserve=0)
+    @usedRegisters[regNum] = {:hash=>hash, :dirty=>0, :time=>0, :preserve=>0 }
+    return regNum
+  end
+
+  def printRegs()
+    @usedRegisters.each{|r|
+      puts r
+    }
+  end
+
+  def dirtyRegisters!(name)
+    (0..@usedRegisters.size-1).each{|i|
+      @usedRegisters[i][:dirty] = @usedRegisters[i][:hash].include?(name) ? 1 : 0
+    }
+  end
+
+  def checkAndStore(reg, name, type)
+    # make anything containing the name of the variable in the register cache dead/dirty
+    dirtyRegisters!(name)
+
+    op = "STORE"
+    op += type  == 'INT' ? 'I' : 'r'
+
+    # store the desired reg into the name
+    # keep result in reg with the name as hash
+    addIR(op, "r#{reg}", nil, name)
+    @usedRegisters[reg][:dirty] = 0
+    @usedRegisters[reg][:time] = 0
+    @usedRegisters[reg][:hash] = "#{name}"
+  end
+
+  def symbolInRegister?(hash)
+    (0..@usedRegisters.size-1).each{|i|
+      if @usedRegisters[i][:hash] == hash and @usedRegisters[i][:dirty] == 0
+        return i
+      end
+    }
+    return -1
+  end
+
+  def functionCall(expr)
+  end
+
+  def loadTok(symbol, type)
+    if isLiteral?(symbol)
+      loadLiteral(symbol)
     else
-      @IRStack[@currFunc].push({:opcode => op, :op1 => op1, :op2 => op2, :result => dest})
+      loadSymbol(symbol, type)
     end
   end
 
-  def chooseRegister(type, hash)
-    @regindex+=1
-    @usedRegisters[hash] = {:type => type , :reg => "r#{@regindex}"}
-    "r#{@regindex}"
+  def loadSymbol(symbol, type)
+    reg = symbolInRegister?(symbol)
+    if reg != -1
+      return reg
+    end
+    reg = chooseRegister(symbol)
+    op = "STORE"
+    op += type  == 'INT' ? 'I' : 'R'
+    addIR(op, symbol, nil, "r#{reg}")
+    return reg
   end
-  def printIRStack()
-    @IRStack.each{|func, nodes|
-      puts ";     #{func}"
-      nodes.each{|instr|
-        printOP(instr,true)
-      }
+
+  # loading literal values
+  def loadLiteral(lit)
+    reg = symbolInRegister?(lit)
+    if reg != -1
+      return reg
+    end
+    register = chooseRegister(lit)
+    if lit.include?('.')
+      addIR("STOREF", lit, nil, "r#{register}")
+    else
+      addIR("STOREI", lit, nil, "r#{register}")
+    end
+    register
+  end
+
+  # fixed to allow for identifying function return types
+  def getExprType(expr)
+    if getTokenType(expr[0]) == 'FUNCTION'
+      return getReturnType expr[0]
+    end
+    if expr[0] == '('
+      getExprType(expr[1..expr.size])
+    else
+      getType(expr[0])
+    end
+  end
+
+  # helpers for debugging
+  def printA(arr)
+    arr.each{|a|
+      print "#{a}|"
+    }
+    print "\n"
+  end
+
+  # easier ident. of where blocks begin and end in a single line
+  def getMatchingParenIndex(expr, firstIdx)
+    p = 0
+
+    (firstIdx..expr.size-1).each{|i|
+      tok = expr[i]
+      if tok == '('
+        p+=1
+      elsif tok == ')'
+        p-=1
+      end
+      return i if p == 0
     }
   end
-  def printOP(instr, comment = false)
-    print ';              ' if comment
-    instr.delete_if{|k,v| v.nil?}
-    puts instr.values.join(' ')
-  end
+
+  # function that mainly have to do with printing actual IR/ASM code
   def getIRComp(op)
     case op
     when '<'
@@ -334,62 +531,29 @@ class RubyCompiler
       'EQ'
     end
   end
-
-  def printA(arr)
-    arr.each{|a|
-      print "#{a}|"
-    }
-    print "\n"
+  def printOP(instr, comment = false)
+    print ';              ' if comment
+    instr.delete_if{|k,v| v.nil?}
+    puts instr.values.join(' ')
   end
 
-  def getMatchingParenIndex(expr, firstIdx)
-    p = 0
-
-    (firstIdx..expr.size-1).each{|i|
-      tok = expr[i]
-      if tok == '('
-        p+=1
-      elsif tok == ')'
-        p-=1
-      end
-      return i if p == 0
-    }
-  end
-
-  def functionCall(expr)
-
-  end
-
-  def loadSymbol(symbol, type)
-    reg = chooseRegister(type, symbol)
-    op = "STORE"
-    op += type  == 'INT' ? 'I' : 'r'
-    addIR(op, symbol, nil, reg)
-    return reg
-  end
-
-  def loadLiteral(lit)
-    #puts "#{lit} is a literal yo"
-    register = chooseRegister(lit.include?('.')? 'FLOAT' : 'INT', "#{lit}")
-    if lit.include?('.')
-      addIR("STOREF",lit, nil, register)
+  def addIR(op, op1, op2, dest)
+    if @IRStack[@currFunc].nil?
+      @IRStack[@currFunc] = [{:opcode => op, :op1 => op1, :op2 => op2, :result => dest}]
     else
-      addIR("STOREI", lit, nil, register)
-    end
-    register
-  end
-
-  def isInRegister(hash)
-    return @usedRegisters[hash]
-  end
-
-  def getExprType(expr)
-    if expr[0] == '('
-      getExprType(expr[1..expr.size])
-    else
-      getType(expr[0])
+      @IRStack[@currFunc].push({:opcode => op, :op1 => op1, :op2 => op2, :result => dest})
     end
   end
+
+  def printIRStack()
+    @IRStack.each{|func, nodes|
+      puts ";     #{func}"
+      nodes.each{|instr|
+        printOP(instr,true)
+      }
+    }
+  end
+
   def IRtoASM()
     mainlink = 0
     @IRStack.each{|func, nodes|
@@ -412,9 +576,10 @@ class RubyCompiler
         elsif line[:opcode] =~ /WRITE|READ/
           temp = {:opcode => 'sys', :op1 => line[:opcode].downcase, :result => line[:result]}
         elsif line[:opcode] =~ /^(ADD|SUB|MUL|DIV)/
-          temp = {:opcode => 'move', :op1 => line[:op1], :result => line[:result]}
-          printOP(temp)
-          temp = {:opcode => line[:opcode].downcase, :op1 => line[:op2], :result => line[:result]}
+          #temp = {:opcode => 'move', :op1 => line[:op1], :result => line[:result]}
+          #printOP(temp)
+          #temp = {:opcode => line[:opcode].downcase, :op1 => line[:op2], :result => line[:result]}
+          temp = {:opcode => line[:opcode].downcase, :op1 => line[:op2], :result => line[:op1]}
         elsif line[:opcode] =~ /^(LT|GT|LE|GE|EQ|NE)/
           temp = {:opcode => "cmp#{line[:opcode][-1]}".downcase, :op1 => line[:op1].downcase, :result => line[:op2]}
           printOP(temp)
