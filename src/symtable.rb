@@ -22,7 +22,7 @@ class RubyCompiler
                 end
               }
             end
-            @scopeStack.push({ :name => token[1], :begin => @usableVariablesStack.size})
+            @scopeStack.push({ :name => token[1], :begin => @usableVariablesStack.size, :returnType => @currMode[:returnType]})
             @currMode= {}
           else
           # new variable Decl
@@ -50,22 +50,51 @@ class RubyCompiler
       if token[1] =~ Grammar::ENDBLOCK
         scope = @scopeStack.pop
         variables = @usableVariablesStack.pop(@usableVariablesStack.size - scope[:begin])
-        print = "#{scope[:name]}\n"
+        
+        @sillyPrintStack.push(scope)
+        @scopeVars[scope[:name]] = []
         variables.each{|var|
-          print += "#{var[:name]} : #{var[:type]}\n"
+          @scopeVars[scope[:name]].push(var)
         }
-        @sillyPrintStack.push(print)
       end
     end
   end
-  def sillyPrintStack()
+  def printSillyPrintStack()
+    printA @sillyPrintStack
+    printA @scopeVars
+    scope = @sillyPrintStack.pop
+    puts scope
+    @scopeVars[scope[:name]].each{|var|
+      puts var
+    }
     while ( @sillyPrintStack.size != 0 )do
-      puts @sillyPrintStack.pop
+      scope = @sillyPrintStack.shift
+      puts scope
+      @scopeVars[scope[:name]].each{|var|
+        puts var
+      }
     end
   end
   def includeVar?(token)
     return !(@usableVariablesStack.map{|h| h['name']}.flatten.include?(token))
   end
+
+  def getTokenType(name)
+    idx = @scopeStack.map{|k| k[1]}.index(name)
+    if !idx.nil?
+      return 'FUNCTION'
+    end
+    i = @usableVariablesStack.size - 1
+    while i >= 0 do 
+      if name == @usableVariablesStack[i][:name]
+        return 'VAR'
+      end
+      i -= 1
+    end
+    return 'LITERAL'
+  end
+
+
   def getType(name)
     i = @usableVariablesStack.size - 1
     while i >= 0 do 
@@ -74,8 +103,13 @@ class RubyCompiler
       end
       i -= 1
     end
+    idx = @scopeStack.map{|k| k[1]}.index(name)
+    if !idx.nil?
+      return @scopeStack[idx][:returnType]
+    end
     return name.include?('.')? 'FLOAT' : 'INT'
   end
+
   def isLiteral?(name)
     i = @usableVariablesStack.size - 1
     while i >= 0 do 
@@ -83,6 +117,10 @@ class RubyCompiler
         return false
       end
       i -= 1
+    end
+    idx = @scopeStack.map{|k| k[1]}.index(name)
+    if !idx.nil?
+      return false
     end
     return true
   end

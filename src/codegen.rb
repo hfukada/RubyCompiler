@@ -1,46 +1,53 @@
 class RubyCompiler
+
   def generateFuncCode(parsedToken)
     if parsedToken == [')','func_decl_param'] #symbolizes end of function declation
       @currFunc = @scopeStack.last[:name]
       addIR("LABEL", nil, nil, @currFunc)
-      addIR("LINK", nil, nil, nil)
+      addIR("LINK", nil, nil, "100")
     elsif parsedToken == ['END', 'func_decl_param']
       addIR("UNLNK",nil,nil,nil)
+      addIR("RET", nil, nil, nil)
     end
   end
+
   def generateWhileCode()
     tokenValues = @baseWhileStack.map{|k| k[0]}
-    if baseWhileStack.last =~ Grammar::COMPOP
-      @compop = @baseWhileStack.last
-      @compreg1 = generateAnyExpr(@baseWhileStack[2..@baseWhileStack.size-2])
-    elsif @baseWhileStack.last == 'DO'
+
+    if tokenValues.last =~ Grammar::COMPOP
+      @compop = tokenValues.last
+      @compreg1 = generateAnyExpr(tokenValues[2..tokenValues.size-2],@baseWhileStack[2..tokenValues.size-2])
+
+    elsif tokenValues.last == 'DO'
       addLabel
       addIR("LABEL", nil, nil, @labelStack.last)
-    elsif @baseWhileStack.last == ';'
-      expr = @baseWhileStack[@baseWhileStack.index(@compop)+1..@baseWhileStack.size - 3]
+
+    elsif tokenValues.last == ';'
+      expr = tokenValues[tokenValues.index(@compop)+1..tokenValues.size - 3]
+      exprWithGrammar = @baseWhileStack[tokenValues.index(@compop)+1..tokenValues.size - 3]
       type=getExprType(expr) == 'INT' ? 'i' : 'r'
-      @compreg2 = generateAnyExpr(expr)
-      if (isLiteral?(@compreg2) or getType(@compreg2) != -1)
-        @compreg2 = loadLiteral(@compreg2)
-      end
+      @compreg2 = generateAnyExpr(expr, exprWithGrammar)
       addIR(getIRComp(@compop)+type, @compreg1, @compreg2, @labelStack.pop)
+
     end
+
   end
+
   def generateIfCode()
-    if @baseIfStack.last() =~ Grammar::COMPOP
-       @compop = @baseIfStack.last
-       @compreg1 = generateAnyExpr(@baseIfStack[2..@baseIfStack.size-2])
-    # elsif @parseStack[0] == 'condend' or @currline =~ /^(ENDIF)$/
-    elsif (@baseIfStack.count('(') === @baseIfStack.count(')') and @baseIfStack.count('(') > 0 ) or @currline =~ /^(ENDIF)$/
+    tokenValues = @baseIfStack.map{|k| k[0]}
+
+    if tokenValues.last() =~ Grammar::COMPOP
+       @compop = tokenValues.last
+       @compreg1 = generateAnyExpr(tokenValues[2..tokenValues.size-2],@baseIfStack[2..tokenValues.size-2])
+
+    elsif @baseIfStack.last == [')','condend'] or @currline =~ /(ENDIF)/
       if @currline.include?("ENDIF")
         # end if label
-
         addIR("LABEL", nil, nil, @labelStack.pop)
         addIR("LABEL", nil, nil, @labelStack.pop)
 
       elsif @currline.include?("ELSIF")
         # ELSIF case
-
         currlabel = @labelStack.pop
         endlabel = @labelStack.last
         addLabel
@@ -50,80 +57,87 @@ class RubyCompiler
 
         if @currline.include?("TRUE") or @currline.include?("FALSE")
           addIR("JUMP", nil, nil, @labelStack.last) if @currline.include?("FALSE")
-        else
-          expr = @baseIfStack[@baseIfStack.index(@compop)+1..@baseIfStack.size - 2]
-          type=getExprType(expr) == 'INT' ? 'i' : 'r'
-          @compreg2 = generateAnyExpr(expr)
-          if (isLiteral?(@compreg2) or getType(@compreg2) != -1)
-            @compreg2 = loadLiteral(@compreg2)
-          end
-          addIR(flipComp(@compop)+type, @compreg1, @compreg2, @labelStack.last)
-        end
 
+        else
+          expr = tokenValues[tokenValues.index(@compop)+1..tokenValues.size - 2]
+          exprWithGrammar = @baseIfStack[tokenValues.index(@compop)+1..tokenValues.size - 2]
+          type=getExprType(expr) == 'INT' ? 'i' : 'r'
+          @compreg2 = generateAnyExpr(expr, exprWithGrammar, true)
+          addIR(flipComp(@compop)+type, @compreg1, @compreg2, @labelStack.last)
+
+        end
       else
         # IF case
         addLabel
         addLabel
+
         if @currline.include?("TRUE") or @currline.include?("FALSE")
           addIR("JUMP", nil, nil, @labelStack.last) if @currline.include?("FALSE")
-        else
-          expr = @baseIfStack[@baseIfStack.index(@compop)+1..@baseIfStack.size - 2]
-          type=getExprType(expr) == 'INT' ? 'i' : 'r'
-          @compreg2 = generateAnyExpr(expr)
 
-          if (isLiteral?(@compreg2) or getType(@compreg2) != -1)
-            @compreg2 = loadLiteral(@compreg2)
-          end
+        else
+          expr = tokenValues[tokenValues.index(@compop)+1..tokenValues.size - 2]
+          exprWithGrammar = @baseIfStack[tokenValues.index(@compop)+1..tokenValues.size - 2]
+          type=getExprType(expr) == 'INT' ? 'i' : 'r'
+          @compreg2 = generateAnyExpr(expr, exprWithGrammar, true)
+
           addIR(flipComp(@compop)+type, @compreg1, @compreg2, @labelStack.last)
         end
       end
     end
   end
-
 
   def addLabel()
     @labelStack.push "label#{@labelindex}"
     @labelindex += 1
   end
-  def generateBaseExprCode()
-    if @baseExprStack[0] == 'READ' or @baseExprStack[0] == 'WRITE' or @baseExprStack[0] == 'RETURN'
-      #handle reads, writes, and returns, when this condition is met, the line has been fully added into the stack
-      if @baseExprStack.last(2) == [')',';']
-        @baseExprStack.delete('(')
-        @baseExprStack.delete(';')
-        @baseExprStack.delete(')')
-        @baseExprStack.delete(',')
-        operation = @baseExprStack.shift
 
-        operation += self.getType(@baseExprStack[0]) == 'INT' ? 'I' : 'r'
-        @baseExprStack.each{|x|
+  def generateBaseExprCode()
+    tokenValues = @baseExprStack.map{|k| k[0]}
+    if tokenValues[0] == 'READ' or tokenValues[0] == 'WRITE' or tokenValues[0] == 'RETURN'
+      #handle reads, writes, and returns, when this condition is met, the line has been fully added into the stack
+      if tokenValues.last(2) == [')',';']
+        tokenValues.delete('(')
+        tokenValues.delete(';')
+        tokenValues.delete(')')
+        tokenValues.delete(',')
+        operation = tokenValues.shift
+
+        operation += self.getType(tokenValues[0]) == 'INT' ? 'I' : 'r'
+        tokenValues.each{|x|
           addIR(operation, nil, nil, x)
         }
       end
     else
-      if @baseExprStack.last == ';'
-        type = self.getType(@baseExprStack[0])
-        resultReg = generateAnyExpr(@baseExprStack[2..@baseExprStack.size-2])
+      if tokenValues.last == ';'
+        type = self.getType(tokenValues[0])
+        resultReg = generateAnyExpr(tokenValues[2..tokenValues.size-2], @baseExprStack[2..tokenValues.size-2])
         op = "STORE"
         op += type  == 'INT' ? 'I' : 'r'
-        reg = chooseRegister(type, @baseExprStack[2..@baseExprStack.size-2].join)
+        reg = chooseRegister(type, tokenValues[2..tokenValues.size-2].join)
 
-        if (isLiteral?(@baseExprStack[2]) or getType(@baseExprStack[2]) != -1) and @baseExprStack.size == 4
+        if (isLiteral?(tokenValues[2]) or getType(tokenValues[2]) != -1) and tokenValues.size == 4
           addIR(op, resultReg, nil, reg)
-          addIR(op, reg, nil, @baseExprStack[0])
+          addIR(op, reg, nil, tokenValues[0])
         else
-          addIR(op, resultReg, nil, @baseExprStack[0])
+          addIR(op, resultReg, nil, tokenValues[0])
         end
       end
     end
   end
 
-  def functionCall(expr)
-
-  end
-  def generateAnyExpr(expr)
+    def generateAnyExpr(expr, exprwithgrammer=nil, force=false)
     exprStack = []
     type=getExprType(expr)
+    if expr.size == 1
+      if isLiteral?(expr[0])
+        return loadLiteral(expr[0])
+      else
+        if force == true
+          return loadSymbol(expr[0], type)
+        end
+        return expr[0]
+      end
+    end
     while (expr.size != 0) do
       exprStack.push(expr.shift)
       if exprStack.last == ')'
@@ -134,6 +148,7 @@ class RubyCompiler
     end
     generateExprSegment(exprStack, type)
   end
+
   def generateExprSegment(segment, type)
     temp = []
     i = 1
@@ -187,7 +202,7 @@ class RubyCompiler
       op += type == 'INT' ? 'I' : 'r'
 
       register = chooseRegister(type,"#{op1r}#{op}#{op2r}")
-      self.addIR(op, op1r, op2r, register)
+      self.addIR(op, op1, op2, register)
       temp.unshift(register)
     end
     temp.last
@@ -218,17 +233,6 @@ class RubyCompiler
     print ';              ' if comment
     instr.delete_if{|k,v| v.nil?}
     puts instr.values.join(' ')
-    #instr.each{|code, val|
-    #  print "#{val} " if instr
-    #}
-    #print "\n"
-    #if instr[:op1].nil?
-    #  puts "#{instr[:opcode]} #{instr[:result]}"
-    #elsif instr[:op2].nil?
-    #  puts "#{instr[:opcode]} #{instr[:op1]} #{instr[:result]}"
-    #else
-    #  puts "#{instr[:opcode]} #{instr[:op1]} #{instr[:op2]} #{instr[:result]}"
-    #end
   end
   def getIRComp(op)
     case op
@@ -269,6 +273,19 @@ class RubyCompiler
     }
     print "\n"
   end
+
+  def functionCall(expr)
+
+  end
+
+  def loadSymbol(symbol, type)
+    reg = chooseRegister(type, symbol)
+    op = "STORE"
+    op += type  == 'INT' ? 'I' : 'r'
+    addIR(op, symbol, nil, reg)
+    return reg
+  end
+
   def loadLiteral(lit)
     #puts "#{lit} is a literal yo"
     register = chooseRegister(lit.include?('.')? 'FLOAT' : 'INT', "#{lit}")
@@ -279,9 +296,11 @@ class RubyCompiler
     end
     register
   end
+
   def isInRegister(hash)
     return @usedRegisters[hash]
   end
+
   def getExprType(expr)
     if expr[0] == '('
       getExprType(expr[1..expr.size])
@@ -293,11 +312,15 @@ class RubyCompiler
     mainlink = 0
     @IRStack.each{|func, nodes|
       if !@IRStack.keys.index('main').nil? and func != "GLOBAL" and mainlink == 0
+        printOP({:opcode => 'push'})
+        printOP({:opcode => 'push', :result => 'r0'})
+        printOP({:opcode => 'push', :result => 'r1'})
+        printOP({:opcode => 'push', :result => 'r2'})
+        printOP({:opcode => 'push', :result => 'r3'})
         printOP({:opcode => 'jsr', :result => 'main'})
         printOP({:opcode => 'sys', :result => 'halt'})
         mainlink = 1
       end
-      print "\n"
       nodes.each{|line|
         if line[:opcode] =~ /(var|str|LINK|UNLNK|RET)/
           temp = line
@@ -322,5 +345,6 @@ class RubyCompiler
         printOP(temp)
       }
     }
+    puts "end"
   end
 end

@@ -24,6 +24,7 @@ class RubyCompiler
   @scopeStack
   @currMode
   @sillyPrintStack
+  @scopeVars
 
   @IRStack
   @regindex
@@ -40,15 +41,16 @@ class RubyCompiler
     @currline = ''
     @baseExprStack = nil
     @baseIfStack = nil
+    @baseWhileStack = nil
 
     @usableVariablesStack = []
     @scopeStack = [{ :name => 'GLOBAL', :begin => @usableVariablesStack.size}]
     @currMode = {}
     @currFunc = "GLOBAL"
     @sillyPrintStack = []
+    @scopeVars = {}
 
     @IRStack = {}
-    @baseWhileStack = []
 
     @regindex = -1
     @labelindex = 0
@@ -110,8 +112,8 @@ class RubyCompiler
         @baseWhileStack = nil
       }
       #self.sillyPrintStack
-      self.printIRStack
-      self.IRtoASM
+      #self.printIRStack
+      #self.IRtoASM
     rescue => e
       puts e.message
       puts e.backtrace.inspect

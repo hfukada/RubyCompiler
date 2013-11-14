@@ -116,11 +116,13 @@ class RubyCompiler
         @baseExprStack.push [value, popped[1]]
       elsif !@baseIfStack.nil?
         @baseIfStack.push [value, popped[1]]
-      elsif value == 'WHILE' or value == 'DO' or (!@baseWhileStack.nil? and @baseWhileStack[0] == 'WHILE')
+      elsif value == 'WHILE' or value == 'DO' or !@baseWhileStack.nil?
         if @baseWhileStack.nil?
-          @baseWhileStack=[value, popped[1]]
+          @baseWhileStack=[[value, popped[1]]]
         else
-          @baseWhileStack.push [value,popped[1]]
+          if @baseWhileStack[0][0] == 'WHILE'
+            @baseWhileStack.push [value,popped[1]]
+          end
         end
       end
       return ( popped[0] == token ) ? popped : "error"
