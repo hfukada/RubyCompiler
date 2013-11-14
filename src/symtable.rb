@@ -87,13 +87,12 @@ class RubyCompiler
     i = @usableVariablesStack.size - 1
     while i >= 0 do 
       if name == @usableVariablesStack[i][:name]
-        return 'VAR'
+        return 'VARIABLE'
       end
       i -= 1
     end
-    return 'LITERAL'
+    return name =~ /(-|\+|\/|\*)/ ? 'OPERATION' : 'LITERAL'
   end
-
 
   def getType(name)
     i = @usableVariablesStack.size - 1

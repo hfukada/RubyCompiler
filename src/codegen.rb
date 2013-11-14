@@ -110,6 +110,7 @@ class RubyCompiler
     else
       if tokenValues.last == ';'
         type = self.getType(tokenValues[0])
+        generateExpr(tokenValues[2..tokenValues.size-2])
         resultReg = generateAnyExpr(tokenValues[2..tokenValues.size-2], @baseExprStack[2..tokenValues.size-2])
         op = "STORE"
         op += type  == 'INT' ? 'I' : 'r'
@@ -125,7 +126,78 @@ class RubyCompiler
     end
   end
 
-    def generateAnyExpr(expr, exprwithgrammer=nil, force=false)
+  def generateExpr(expr)
+    postfix = generatePostfix(expr)
+
+    while !postfix.empty?
+      tok = postfix.shift
+      case tok[1]
+      when 'OPERATION'
+      when 'LITERAL'
+      when 'VARIABLE'
+      else #FUNCTION
+      end
+    end
+  end
+
+  def generatePostfix(expr, strtIdx = 0, endIdx = expr.size)
+    i = strtIdx
+    opStack = []
+    postfix = []
+    while i < endIdx do
+      tok = expr[i]
+      tokType = getTokenType(tok)
+      if tok == '('
+        parenEndIdx = getMatchingParenIndex(expr,i)
+        postfix += generatePostfix(expr, i+1, parenEndIdx)
+        i = parenEndIdx + 1
+
+      elsif tokType == 'OPERATION'
+        if opStack.empty?
+          opStack.push tok
+        else
+          while !opStack.empty? and opOrder(opStack.last) > opOrder(tok) do
+            postfix.push [opStack.pop, 'OPERATION']
+          end
+          opStack.push tok
+        end
+        i += 1
+      else
+        case tokType
+        when 'LITERAL','VARIABLE'
+          postfix.push [tok, tokType]
+        when 'FUNCTION'
+          # expr[0] => function name
+          # expr[1] => (
+          # expr[2] => arg 1 begin
+          parenEndIdx = getMatchingParenIndex(expr, i+2) - 1
+          #result = callFunction(tok, expr[i+2..parenEndIdx])
+          i = parenEndIdx + 1
+
+          # need to figure out how to handle generating IR code in the middle of expr to handle this.
+
+          #end state should be ") expr#
+          postfix.push [tok, expr[i+2..parenEndIdx]
+        end
+        i += 1
+      end
+    end
+    while !opStack.empty? do
+      postfix.push opStack.pop
+    end
+    postfix
+  end
+
+  def opOrder(op)
+    case op
+    when '-', '+'
+      0
+    else
+      1
+    end
+  end
+
+  def generateAnyExpr(expr, exprwithgrammer=nil, force=false)
     exprStack = []
     type=getExprType(expr)
     if expr.size == 1
@@ -157,7 +229,6 @@ class RubyCompiler
     end
     segment.each{|tok|
       if temp.last == '*' or temp.last == '/'
-        # pop off the mult op
         op = temp.pop == '*' ? 'MUL' : 'DIV'
         op1 = temp.pop
         op2 = tok
@@ -170,7 +241,7 @@ class RubyCompiler
         if isLiteral?(op2)
           op2 = loadLiteral(op2)
         end
-        #type = self.getType(@baseExprStack[0])
+
         op += type == 'INT' ? 'I' : 'r'
         register = chooseRegister(type, "#{op1r}#{op}#{op2r}")
 
@@ -181,7 +252,7 @@ class RubyCompiler
         temp.push(tok)
       end
     }
-    #printA(temp)
+
     while temp.size > 1 do
       op1 = temp.shift
       op = temp.shift
@@ -189,9 +260,6 @@ class RubyCompiler
       op1r = op1
       op2r = op2
 
-      #puts "op :#{op}| op1 :#{op1}| op2 :#{op2}"
-
-      #type = self.getType(@baseExprStack[0])
       if isLiteral?(op1)
         op1 = loadLiteral(op1)
       end
@@ -272,6 +340,20 @@ class RubyCompiler
       print "#{a}|"
     }
     print "\n"
+  end
+
+  def getMatchingParenIndex(expr, firstIdx)
+    p = 0
+
+    (firstIdx..expr.size-1).each{|i|
+      tok = expr[i]
+      if tok == '('
+        p+=1
+      elsif tok == ')'
+        p-=1
+      end
+      return i if p == 0
+    }
   end
 
   def functionCall(expr)
