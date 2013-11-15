@@ -26,7 +26,6 @@
 ;LABEL label2
 ;STOREI $L1 $R
 ;RET
-
 ;LABEL main
 ;LINK
 ;WRITES input
@@ -60,7 +59,6 @@
 ;STOREI 0 $T8
 ;STOREI $T8 $R
 ;RET
-
 ;tiny code
 str input "Please enter an integer number: "
 str eol "\n"

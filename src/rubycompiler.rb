@@ -117,12 +117,12 @@ class RubyCompiler
         @baseExprStack = nil
         @baseWhileStack = nil
       }
-      #self.sillyPrintStack
+      #printSillyPrintStack()
 
       doFunctionIRAdjustments
 
-      #self.printIRStack
-      #self.IRtoASM
+      self.printIRStack
+      self.IRtoASM
     rescue => e
       puts e.message
       puts e.backtrace.inspect

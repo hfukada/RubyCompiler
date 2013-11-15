@@ -15,7 +15,7 @@ class RubyCompiler
     if tokenValues.last =~ Grammar::COMPOP
       @compop = tokenValues.last
       expr = tokenValues[2..tokenValues.size-2] 
-      type=getExprType(expr) == 'INT' ? 'i' : 'r'
+      type=getExprType(expr)
       @compreg1 = generateExpr( expr, type )
       @usedRegisters[@compreg1][:preserve] = 1
 
@@ -27,7 +27,7 @@ class RubyCompiler
     elsif tokenValues.last == ';'
       expr = tokenValues[tokenValues.index(@compop)+1..tokenValues.size - 3]
       exprWithGrammar = @baseWhileStack[tokenValues.index(@compop)+1..tokenValues.size - 3]
-      type=getExprType(expr) == 'INT' ? 'i' : 'r'
+      type=getExprType(expr)
       @compreg2 = generateExpr(expr, type)
       addIR(getIRComp(@compop)+type, "r#{@compreg1}", "r#{@compreg2}", @labelStack.pop)
       @usedRegisters[@compreg1][:preserve] = 0
@@ -40,11 +40,14 @@ class RubyCompiler
     tokenValues = @baseIfStack.map{|k| k[0]}
 
     if tokenValues.last() =~ Grammar::COMPOP
-       resetRegisters
-       @compop = tokenValues.last
+      resetRegisters
+      @compop = tokenValues.last
 
-       @compreg1 = generateExpr(tokenValues[2..tokenValues.size-2],@baseIfStack[2..tokenValues.size-2])
-       @usedRegisters[@compreg1][:preserve] = 1
+      expr= tokenValues[2..tokenValues.size-2]
+      getExprType(expr)
+      type=getExprType(expr)
+      @compreg1 = generateExpr(expr, type)
+      @usedRegisters[@compreg1][:preserve] = 1
 
     elsif @baseIfStack.last == [')','condend'] or @currline =~ /(ENDIF)/
       if @currline.include?("ENDIF")
@@ -68,7 +71,7 @@ class RubyCompiler
         else
           expr = tokenValues[tokenValues.index(@compop)+1..tokenValues.size - 2]
           exprWithGrammar = @baseIfStack[tokenValues.index(@compop)+1..tokenValues.size - 2]
-          type=getExprType(expr) == 'INT' ? 'i' : 'r'
+          type=getExprType(expr)
           @compreg2 = generateExpr(expr, type)
           addIR(flipComp(@compop)+type, "r#{@compreg1}", "r#{@compreg2}", @labelStack.last)
 
@@ -86,7 +89,7 @@ class RubyCompiler
         else
           expr = tokenValues[tokenValues.index(@compop)+1..tokenValues.size - 2]
           exprWithGrammar = @baseIfStack[tokenValues.index(@compop)+1..tokenValues.size - 2]
-          type=getExprType(expr) == 'INT' ? 'i' : 'r'
+          type=getExprType(expr)
           @compreg2 = generateExpr(expr, type)
 
           addIR(flipComp(@compop)+type, "r#{@compreg1}", "r#{@compreg2}", @labelStack.last)
@@ -111,15 +114,15 @@ class RubyCompiler
         tokenValues.delete(',')
         operation = tokenValues.shift
 
-        operation += self.getType(tokenValues[0]) == 'INT' ? 'I' : 'r'
         tokenValues.each{|var|
-          addIR(operation, nil, nil, var)
+          t = self.getType(var)
+          addIR("#{operation}#{t}", nil, nil, var)
         }
       end
     elsif tokenValues[0] == 'RETURN' and tokenValues.last == ';'
       type = getExprType(tokenValues[1..tokenValues.size-2])
       resultReg = generateExpr(tokenValues[1..tokenValues.size-2], type)
-      addIR("STORE#{type == 'FLOAT' ? 'r' : 'i'}", "r#{resultReg}", nil, '$R')
+      addIR("STORE#{type}", "r#{resultReg}", nil, '$R')
       addIR("RETURN", nil, nil, nil)
     else
       if tokenValues.last == ';'
@@ -286,7 +289,7 @@ class RubyCompiler
       opt = 'DIV'
     end
 
-    opt += type == 'INT' ? 'I' : 'R'
+    opt += type
   end
 
   def chooseRegister(hash)
@@ -341,7 +344,7 @@ class RubyCompiler
     dirtyRegisters!(reg, name)
 
     op = "STORE"
-    op += type  == 'INT' ? 'I' : 'r'
+    op += type
 
     # store the desired reg into the name
     # keep result in reg with the name as hash
@@ -363,13 +366,20 @@ class RubyCompiler
     funcName = func[0]
     args = func[1].chunk{|i| i == ',' }.map{|j,k| k == [','] ? nil : k}.compact
 
+    # push return value space
     # push paraneters onto stack
+    exprRegs=[]
     args.each{|expr|
-      addIR("PUSH", nil, nil, "r#{generateExpr(expr, type)}")
+      exprRegs += [generateExpr(expr,type)]
     }
 
-    # push return value space
     addIR("PUSH", nil, nil, nil)
+
+    #push expr param
+    exprRegs.each{|reg|
+      addIR("PUSH", nil, nil, "r#{reg}")
+    }
+
     (0..@regCount-1).each{|k|
       addIR("PUSH", nil, nil, "r#{k}")
     }
@@ -406,7 +416,7 @@ class RubyCompiler
     end
     reg = chooseRegister(symbol)
     op = "STORE"
-    op += type  == 'INT' ? 'I' : 'R'
+    op += type
     addIR(op, symbol, nil, "r#{reg}")
     return reg
   end
@@ -512,7 +522,7 @@ class RubyCompiler
   def printIRStack()
     @IRStack.each{|func, nodes|
       puts ";     #{func}"
-      printA getVariablesByScope(func)
+      #printA getVariablesByScope(func)
       nodes.each{|instr|
         printOP(instr,true)
       }
@@ -522,29 +532,49 @@ class RubyCompiler
   # this function modifies the IR nodes to use variables on the stack, and not use names
   def doFunctionIRAdjustments()
     @IRStack.each{|func, nodes|
-      puts "; #{func} params: "
-      params = {}
-      paramlist = getParamsByScope(func)
-      stackParamIdx = paramlist.size + 6
-      paramlist.each{|v|
-        params[v[:name]] = {:type => v[:type], :stackid => stackParamIdx }
-        stackParamIdx -= 1
-      }
+      if func != 'GLOBAL'
+        #puts "; #{func} params: "
+        params = {}
+        paramlist = getParamsByScope(func)
+        stackParamIdx = paramlist.size + 6 - 1
+        paramlist.each{|v|
+          params[v[:name]] = {:type => v[:type], :stackid => stackParamIdx }
+          stackParamIdx -= 1
+        }
 
-      temps = {}
-      templist = getParamsByScope(func)
-      stackTempIdx = -1
-      templist.each{|v|
-        temps[v[:name]] = {:type => v[:type], :stackid => stackTempIdx }
-        stackTempIdx -= 1
-      }
-
-      nodes.map{|line|
-        if !temps[line[:op1]].nil?
-          line[:op1] = 
-        elsif !params[line[:op1]].nil?
-        end
-      }
+        temps = {}
+        templist = getTempVarsByScope(func)
+        stackTempIdx = -1
+        templist.each{|v|
+          temps[v[:name]] = {:type => v[:type], :stackid => stackTempIdx }
+          stackTempIdx -= 1
+        }
+        returnPtr = paramlist.size + 6
+        nodes.map{|line|
+          if line[:opcode] == 'LINK'
+            line[:result] = temps.size
+          else
+            if !temps[line[:op1]].nil?
+              line[:op1] = "$#{temps[line[:op1]][:stackid]}"
+            elsif !params[line[:op1]].nil?
+              line[:op1] = "$#{params[line[:op1]][:stackid]}"
+            end
+            if !temps[line[:op2]].nil?
+              line[:op2] = "$#{temps[line[:op2]][:stackid]}"
+            elsif !params[line[:op2]].nil?
+              line[:op2] = "$#{params[line[:op2]][:stackid]}"
+            end
+            if !temps[line[:result]].nil?
+              line[:result] = "$#{temps[line[:result]][:stackid]}"
+            elsif !params[line[:result]].nil?
+              line[:result] = "$#{params[line[:result]][:stackid]}"
+            end
+            if line[:result] == '$R'
+              line[:result] = "$#{returnPtr}"
+            end
+          end
+        }
+      end
     }
   end
 
@@ -562,7 +592,7 @@ class RubyCompiler
         mainlink = 1
       end
       nodes.each{|line|
-        if line[:opcode] =~ /(var|str|LINK|UNLNK|RET)/
+        if line[:opcode] =~ /(var|str|LINK|UNLNK)/
           temp = line
           temp[:opcode].downcase!
         elsif line[:opcode].include?('STORE')
@@ -587,7 +617,7 @@ class RubyCompiler
         elsif line[:opcode] == 'POP' or line[:opcode] == 'PUSH'
           temp = {:opcode => line[:opcode].downcase, :result => line[:result]}
         elsif line[:opcode] == 'RETURN'
-          temp = {:opcode => 'unlink'}
+          temp = {:opcode => 'unlnk'}
           printOP(temp)
           temp = {:opcode => 'ret'}
         end

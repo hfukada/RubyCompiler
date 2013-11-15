@@ -47,7 +47,6 @@
 ;LABEL label5
 ;LABEL label2
 ;RET
-
 ;LABEL main
 ;LINK
 ;STOREI 0 $T1
@@ -75,7 +74,6 @@
 ;STOREI 0 $T5
 ;STOREI $T5 $R
 ;RET
-
 ;tiny code
 str input "Please input an integer number: "
 str space " "

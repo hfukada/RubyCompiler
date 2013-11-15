@@ -10,7 +10,7 @@ class RubyCompiler
             if @currFunc  == "GLOBAL"
               # print globals
               @usableVariablesStack.each{|var|
-                type = var[:type] == "STRING" ? 'str' : 'var'
+                type = var[:type] == "s" ? 'str' : 'var'
                 if !var[:value].nil?
                   #puts "#{type} #{var[:name]} #{var[:value]}"
                   addIR(type, var[:name], nil, var[:value])
@@ -43,7 +43,7 @@ class RubyCompiler
         if @currMode[:type] == 'FUNCTION'
           @currMode[:returnType] = token[1]
         else
-          @currMode[:type] = token[1]
+          @currMode[:type] = token[1] == 'FLOAT' ? 'r' : token[1][0].downcase
         end
       elsif token[1] == 'FUNCTION'
         @currMode= {:type => 'FUNCTION'}
@@ -85,11 +85,11 @@ class RubyCompiler
   end
 
   def getParamsByScope(scope=@currFunc)
-    return getVariablesByScope(scope).map{|p| p[:paramDecl] == 1 ? nil : p}.compact
+    return getVariablesByScope(scope).map{|p| p[:paramDecl] == 1 ? p : nil }.compact
   end
 
   def getTempVarsByScope(scope=@currFunc)
-    return getVariablesByScope(scope).map{|p| p[:paramDecl] == 0 ? nil : p}.compact
+    return getVariablesByScope(scope).map{|p| p[:paramDecl] == 0 ? p : nil }.compact
   end
 
   def includeVar?(token)
@@ -127,11 +127,11 @@ class RubyCompiler
       end
       i -= 1
     end
-    idx = @scopeStack.map{|k| k[1]}.index(name)
-    if !idx.nil?
+    vars = @scopeStack.map{|k| k[1]}
+    if !vars.index(name).nil?
       return @scopeStack[idx][:returnType]
     end
-    return name.include?('.')? 'FLOAT' : 'INT'
+    return name.include?('.')? 'r' : 'i'
   end
 
   def isLiteral?(name)
