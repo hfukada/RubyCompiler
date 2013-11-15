@@ -38,7 +38,11 @@ class RubyCompiler
 
     if tokenValues.last() =~ Grammar::COMPOP
        @compop = tokenValues.last
-       @compreg1 = generateAnyExpr(tokenValues[2..tokenValues.size-2],@baseIfStack[2..tokenValues.size-2])
+       #@compreg1 = generateAnyExpr(tokenValues[2..tokenValues.size-2],@baseIfStack[2..tokenValues.size-2])
+
+
+       @compreg1 = generateExpr(tokenValues[2..tokenValues.size-2],@baseIfStack[2..tokenValues.size-2])
+       @usedRegisters[@compreg1][:preserve] = 1
 
     elsif @baseIfStack.last == [')','condend'] or @currline =~ /(ENDIF)/
       if @currline.include?("ENDIF")
@@ -62,8 +66,11 @@ class RubyCompiler
           expr = tokenValues[tokenValues.index(@compop)+1..tokenValues.size - 2]
           exprWithGrammar = @baseIfStack[tokenValues.index(@compop)+1..tokenValues.size - 2]
           type=getExprType(expr) == 'INT' ? 'i' : 'r'
-          @compreg2 = generateAnyExpr(expr, exprWithGrammar, true)
+          # @compreg2 = generateAnyExpr(expr, exprWithGrammar, true)
+          @compreg2 = generateExpr(expr, exprWithGrammar)
           addIR(flipComp(@compop)+type, @compreg1, @compreg2, @labelStack.last)
+
+          @usedRegisters[@compreg1][:preserve] = 0
 
         end
       else
@@ -104,9 +111,6 @@ class RubyCompiler
 
         operation += self.getType(tokenValues[0]) == 'INT' ? 'I' : 'r'
         tokenValues.each{|var|
-          if operation.include?('WRITE')
-            dirtyRegisters!(var)
-          end
           addIR(operation, nil, nil, var)
         }
       end
@@ -167,26 +171,71 @@ class RubyCompiler
           opArg1 = symbolInRegister? op1
           opArg2 = symbolInRegister? op2
 
-          # if not in register and is a literal, load it
-          if opArg2 == -1 and isLiteral?(op2)
-            opArg2 = "r#{loadTok(op2, type)}"
-
-          # if not in register, but it is a variable we can directly use it for second argument
-          elsif opArg2 == -1 and !isLiteral?(op2)
-            opArg2 = op2
-          else
+          reg2 = -1
+          if opArg1 >= 0 and opArg2 >= 0
+            @usedRegisters[opArg1][:preserve] = 1
+            @usedRegisters[opArg2][:preserve] = 1
+            reg2 = opArg2
             opArg2 = "r#{opArg2}"
-          end
 
-          # however, the second argument must be in the register
-          if opArg1 == -1
+          elsif opArg1 < 0 and opArg2 >= 0
+            @usedRegisters[opArg2][:preserve] = 1
             opArg1 = loadTok(op1, type)
+            @usedRegisters[opArg1][:preserve] = 1
+            reg2 = opArg2
+            opArg2 = "r#{opArg2}"
+
+          elsif opArg1 >=0 and opArg2 < 0
+            @usedRegisters[opArg1][:preserve] = 1
+            if isLiteral?(op2)
+              reg2 = loadTok(op2, type)
+              @usedRegisters[reg2][:preserve] = 1
+              opArg2 = "r#{reg2}"
+
+            else
+              opArg2 = op2
+            end
+
+          else
+            opArg1 = loadTok(op1, type)
+            @usedRegisters[opArg1][:preserve] = 1
+            opArg2 = loadTok(op2, type)
+            @usedRegisters[opArg2][:preserve] = 1
+            reg2 = opArg2
+            opArg2 = "r#{opArg2}"
+
           end
+          # the first argument must be in the register
+          #if opArg1 == -1
+          #  opArg1 = loadTok(op1, type)
+          #end
+          #@usedRegisters[opArg1][:preserve] = 1
+
+          ## if not in register and is a literal, load it
+          #reg2 = -1
+          #if opArg2 == -1 and isLiteral?(op2)
+          #  reg2 = loadTok(op2, type)
+          #  opArg2 = "r#{reg2}"
+          #  @usedRegisters[reg2][:preserve] = 1
+          ## if not in register, but it is a variable we can directly use it for second argument
+          #elsif opArg2 == -1 and !isLiteral?(op2)
+          #  opArg2 = op2
+          #else
+          #  reg2 = opArg2
+          #  opArg2 = "r#{opArg2}"
+          #  @usedRegisters[reg2][:preserve] = 1
+          #end
+
 
           # always store our result in arg2, because it is a guaranteed register
           addIR(op, "r#{opArg1}", opArg2, "r#{opArg1}")
+          puts "r#{opArg1} #{opArg2} = #{op1}#{tok[0]}#{op2}"
+          printRegs
 
-          setReg(opArg1, "#{op1}#{tok[0]}#{op2}")
+          setReg(opArg1,"#{op1}#{tok[0]}#{op2}", 0)
+          if reg2 != -1
+            @usedRegisters[reg2][:preserve] = 0
+          end
           exprStack.push("#{op1}#{tok[0]}#{op2}")
         end
       when 'LITERAL', 'VARIABLE'
@@ -349,6 +398,8 @@ class RubyCompiler
   end
 
   def chooseRegister(hash)
+    #puts hash
+    #printRegs
     (0..@usedRegisters.size-1).each{|i|
       if @usedRegisters[i][:hash] != ""
         @usedRegisters[i][:time] += 1
@@ -371,21 +422,30 @@ class RubyCompiler
     # store the old register IF the hash is a simple variable
     chosenReg = -1
     (0..@usedRegisters.size-1).each{|i|
-      if @usedRegisters[i][:time] == 0 and @usedRegisters[i][:preserve] == 0
+      if @usedRegisters[i][:time] == 0
         chosenReg = i
         break
       end
     }
     if chosenReg == -1
+
       max = @usedRegisters.map{|k| k[:time] }.max
       chosenReg = @usedRegisters.map{|k| k[:time]}.index(max)
-      chosenReg = @usedRegisters.map{|k| k[:time]}.index(@usedRegisters.map{|k| k[:time] }.max)
+      #puts chosenReg
+      #chosenReg = @usedRegisters.map{|k| k[:time]}.index(@usedRegisters.map{|k| k[:time] }.max)
+      #printRegs
+      chosenReg = @usedRegisters.map{|k| k[:preserve] == 1 ? -1 : k[:time]}.each_with_index.max[1]
+      #puts chosenReg2
+      #if chosenReg2 != chosenReg
+      #  #printRegs
+      #end
+      #puts chosenReg
     end
-    setReg(chosenReg, hash)
+    setReg(chosenReg, hash, 1)
   end
 
   def setReg(regNum, hash="", preserve=0)
-    @usedRegisters[regNum] = {:hash=>hash, :dirty=>0, :time=>0, :preserve=>0 }
+    @usedRegisters[regNum] = {:hash=>hash, :dirty=>0, :time=>0, :preserve=>preserve }
     return regNum
   end
 
@@ -395,25 +455,28 @@ class RubyCompiler
     }
   end
 
-  def dirtyRegisters!(name)
+  def dirtyRegisters!(idx, name)
     (0..@usedRegisters.size-1).each{|i|
+      #puts "#{@usedRegisters[i][:hash]} , #{name}"
       @usedRegisters[i][:dirty] = @usedRegisters[i][:hash].include?(name) ? 1 : 0
     }
   end
 
   def checkAndStore(reg, name, type)
     # make anything containing the name of the variable in the register cache dead/dirty
-    dirtyRegisters!(name)
+    dirtyRegisters!(reg, name)
 
     op = "STORE"
     op += type  == 'INT' ? 'I' : 'r'
 
     # store the desired reg into the name
     # keep result in reg with the name as hash
+    #puts "r#{reg} --> #{name}"
     addIR(op, "r#{reg}", nil, name)
+    @usedRegisters[reg][:hash] = name
     @usedRegisters[reg][:dirty] = 0
-    @usedRegisters[reg][:time] = 0
-    @usedRegisters[reg][:hash] = "#{name}"
+    #printRegs
+    #puts ''
   end
 
   def symbolInRegister?(hash)
@@ -424,6 +487,7 @@ class RubyCompiler
     }
     return -1
   end
+
 
   def functionCall(expr)
   end
@@ -437,6 +501,8 @@ class RubyCompiler
   end
 
   def loadSymbol(symbol, type)
+    #puts symbol
+    #printRegs
     reg = symbolInRegister?(symbol)
     if reg != -1
       return reg
