@@ -42,7 +42,7 @@ class Grammar
 
     "param_decl_list"  => "param_decl param_decl_tail",
     "param_decl_tail"  => ", param_decl param_decl_tail|empty", # or empty
-    "param_decl"       => "FLOAT id|INT id",
+    "param_decl"       => "FLOAT IDENTIFIER|INT IDENTIFIER",
 
     "func_declarations"=> "func_decl func_decl_tail|empty",
     "func_decl_tail"   => "func_decl func_decl_tail|empty",

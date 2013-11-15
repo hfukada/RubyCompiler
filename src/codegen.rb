@@ -5,9 +5,7 @@ class RubyCompiler
       @currFunc = @scopeStack.last[:name]
       addIR("LABEL", nil, nil, @currFunc)
       addIR("LINK", nil, nil, "100")
-    elsif parsedToken == ['END', 'func_decl_param']
-      addIR("UNLNK",nil,nil,nil)
-      addIR("RET", nil, nil, nil)
+      resetRegisters
     end
   end
 
@@ -16,7 +14,9 @@ class RubyCompiler
 
     if tokenValues.last =~ Grammar::COMPOP
       @compop = tokenValues.last
-      @compreg1 = generateExpr(tokenValues[2..tokenValues.size-2],@baseWhileStack[2..tokenValues.size-2])
+      expr = tokenValues[2..tokenValues.size-2] 
+      type=getExprType(expr) == 'INT' ? 'i' : 'r'
+      @compreg1 = generateExpr( expr, type )
       @usedRegisters[@compreg1][:preserve] = 1
 
     elsif tokenValues.last == 'DO'
@@ -28,7 +28,7 @@ class RubyCompiler
       expr = tokenValues[tokenValues.index(@compop)+1..tokenValues.size - 3]
       exprWithGrammar = @baseWhileStack[tokenValues.index(@compop)+1..tokenValues.size - 3]
       type=getExprType(expr) == 'INT' ? 'i' : 'r'
-      @compreg2 = generateExpr(expr, exprWithGrammar)
+      @compreg2 = generateExpr(expr, type)
       addIR(getIRComp(@compop)+type, "r#{@compreg1}", "r#{@compreg2}", @labelStack.pop)
       @usedRegisters[@compreg1][:preserve] = 0
 
@@ -69,7 +69,7 @@ class RubyCompiler
           expr = tokenValues[tokenValues.index(@compop)+1..tokenValues.size - 2]
           exprWithGrammar = @baseIfStack[tokenValues.index(@compop)+1..tokenValues.size - 2]
           type=getExprType(expr) == 'INT' ? 'i' : 'r'
-          @compreg2 = generateExpr(expr, exprWithGrammar)
+          @compreg2 = generateExpr(expr, type)
           addIR(flipComp(@compop)+type, "r#{@compreg1}", "r#{@compreg2}", @labelStack.last)
 
           @usedRegisters[@compreg1][:preserve] = 0
@@ -87,7 +87,7 @@ class RubyCompiler
           expr = tokenValues[tokenValues.index(@compop)+1..tokenValues.size - 2]
           exprWithGrammar = @baseIfStack[tokenValues.index(@compop)+1..tokenValues.size - 2]
           type=getExprType(expr) == 'INT' ? 'i' : 'r'
-          @compreg2 = generateExpr(expr, exprWithGrammar)
+          @compreg2 = generateExpr(expr, type)
 
           addIR(flipComp(@compop)+type, "r#{@compreg1}", "r#{@compreg2}", @labelStack.last)
         end
@@ -102,7 +102,7 @@ class RubyCompiler
 
   def generateBaseExprCode()
     tokenValues = @baseExprStack.map{|k| k[0]}
-    if tokenValues[0] == 'READ' or tokenValues[0] == 'WRITE' or tokenValues[0] == 'RETURN'
+    if tokenValues[0] == 'READ' or tokenValues[0] == 'WRITE'
       #handle reads, writes, and returns, when this condition is met, the line has been fully added into the stack
       if tokenValues.last(2) == [')',';']
         tokenValues.delete('(')
@@ -116,6 +116,11 @@ class RubyCompiler
           addIR(operation, nil, nil, var)
         }
       end
+    elsif tokenValues[0] == 'RETURN' and tokenValues.last == ';'
+      type = getExprType(tokenValues[1..tokenValues.size-2])
+      resultReg = generateExpr(tokenValues[1..tokenValues.size-2], type)
+      addIR("STORE#{type == 'FLOAT' ? 'r' : 'i'}", "r#{resultReg}", nil, '$R')
+      addIR("RETURN", nil, nil, nil)
     else
       if tokenValues.last == ';'
         type = getType(tokenValues[0])
@@ -126,16 +131,21 @@ class RubyCompiler
   end
 
   def generateExpr(expr, type)
-    # handle the case, that the expr only has one thing
-    if expr.size == 1
-      return loadTok(expr[0], type)
-    end
-
     postfix = generatePostfix(expr)
     exprStack = []
 
+    # handle the case, that the expr only has one thing
+    if postfix.size == 1
+      if postfix[0][1]== 'LITERAL' or postfix[0][1] == 'VARIABLE'
+        return loadTok(postfix[0][0], type)
+      else
+        return functionCall(postfix[0], type)
+      end
+    end
+
     while !postfix.empty?
       tok = postfix.shift
+
       case tok[1]
       when 'OPERATION'
         op2 = exprStack.pop
@@ -201,6 +211,9 @@ class RubyCompiler
       when 'LITERAL', 'VARIABLE'
         exprStack.push tok[0]
       else #FUNCTION
+        puts "; calling Function"
+        result = functionCall(tok, type)
+        exprStack.push result
       end
     end
     return opArg1
@@ -236,14 +249,12 @@ class RubyCompiler
           # expr[0] => function name
           # expr[1] => (
           # expr[2] => arg 1 begin
-          parenEndIdx = getMatchingParenIndex(expr, i+2) - 1
-          #result = callFunction(tok, expr[i+2..parenEndIdx])
-          i = parenEndIdx + 1
+          parenEndIdx = getMatchingParenIndex(expr, i+1)
+          postfix.push [tok, expr[i+2..parenEndIdx-1]]
+          i = parenEndIdx
 
-          # need to figure out how to handle generating IR code in the middle of expr to handle this.
-
+          # do calling of function inside the IR generation
           #end state should be ") expr#
-          postfix.push [tok, expr[i+2..parenEndIdx]]
         end
         i += 1
       end
@@ -348,8 +359,36 @@ class RubyCompiler
     return -1
   end
 
+  def functionCall(func, type)
+    funcName = func[0]
+    args = func[1].chunk{|i| i == ',' }.map{|j,k| k == [','] ? nil : k}.compact
 
-  def functionCall(expr)
+    # push paraneters onto stack
+    args.each{|expr|
+      addIR("PUSH", nil, nil, "r#{generateExpr(expr, type)}")
+    }
+
+    # push return value space
+    addIR("PUSH", nil, nil, nil)
+    (0..@regCount-1).each{|k|
+      addIR("PUSH", nil, nil, "r#{k}")
+    }
+
+    addIR("JSR", nil, nil, funcName)
+
+    # pop registers
+    (0..@regCount-1).each{|k|
+      addIR("POP", nil, nil, "r#{3-k}")
+    }
+
+    # pop parameters
+    args.each{|expr|
+      addIR("POP", nil, nil, nil)
+    }
+
+    resultReg = chooseRegister(func.flatten.join)
+    addIR("POP", nil, nil, "r#{resultReg}")
+    resultReg
   end
 
   def loadTok(symbol, type)
@@ -401,6 +440,7 @@ class RubyCompiler
 
   # helpers for debugging
   def printA(arr)
+    print ";   "
     arr.each{|a|
       print "#{a}|"
     }
@@ -472,8 +512,38 @@ class RubyCompiler
   def printIRStack()
     @IRStack.each{|func, nodes|
       puts ";     #{func}"
+      printA getVariablesByScope(func)
       nodes.each{|instr|
         printOP(instr,true)
+      }
+    }
+  end
+
+  # this function modifies the IR nodes to use variables on the stack, and not use names
+  def doFunctionIRAdjustments()
+    @IRStack.each{|func, nodes|
+      puts "; #{func} params: "
+      params = {}
+      paramlist = getParamsByScope(func)
+      stackParamIdx = paramlist.size + 6
+      paramlist.each{|v|
+        params[v[:name]] = {:type => v[:type], :stackid => stackParamIdx }
+        stackParamIdx -= 1
+      }
+
+      temps = {}
+      templist = getParamsByScope(func)
+      stackTempIdx = -1
+      templist.each{|v|
+        temps[v[:name]] = {:type => v[:type], :stackid => stackTempIdx }
+        stackTempIdx -= 1
+      }
+
+      nodes.map{|line|
+        if !temps[line[:op1]].nil?
+          line[:op1] = 
+        elsif !params[line[:op1]].nil?
+        end
       }
     }
   end
@@ -512,6 +582,14 @@ class RubyCompiler
           temp = {:opcode => line[:opcode].downcase, :result => line[:result]}
         elsif line[:opcode] == 'JUMP'
           temp = {:opcode => 'jmp', :result => line[:result]}
+        elsif line[:opcode] == 'JSR'
+          temp = {:opcode => 'jsr', :result => line[:result]}
+        elsif line[:opcode] == 'POP' or line[:opcode] == 'PUSH'
+          temp = {:opcode => line[:opcode].downcase, :result => line[:result]}
+        elsif line[:opcode] == 'RETURN'
+          temp = {:opcode => 'unlink'}
+          printOP(temp)
+          temp = {:opcode => 'ret'}
         end
         printOP(temp)
       }

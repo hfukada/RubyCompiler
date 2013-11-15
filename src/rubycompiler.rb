@@ -89,7 +89,7 @@ class RubyCompiler
           parsed_tok = self.processSingleToken(token.strip, tok[1].strip)
 
           if ignoreLine == 0
-            declError = self.symStack(tok, doDecls)
+            declError = self.symStack(tok, parsed_tok, doDecls)
           end
           if parsed_tok == "error"
             puts "Not Accepted"
@@ -118,8 +118,11 @@ class RubyCompiler
         @baseWhileStack = nil
       }
       #self.sillyPrintStack
-      self.printIRStack
-      self.IRtoASM
+
+      doFunctionIRAdjustments
+
+      #self.printIRStack
+      #self.IRtoASM
     rescue => e
       puts e.message
       puts e.backtrace.inspect

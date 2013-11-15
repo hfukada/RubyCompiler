@@ -1,7 +1,7 @@
 require './src/grammar'
 
 class RubyCompiler
-    def symStack(token, doDecls)
+    def symStack(token, contextToken, doDecls)
     if token[0] =~ Grammar::DESCRIBERS or token[1] =~ Grammar::SYMBOLPUSH
       if token[0] == 'IDENTIFIER'
         if doDecls == 1 and includeVar?(token[1])
@@ -25,8 +25,12 @@ class RubyCompiler
             @scopeStack.push({ :name => token[1], :begin => @usableVariablesStack.size, :returnType => @currMode[:returnType]})
             @currMode= {}
           else
-          # new variable Decl
-            @usableVariablesStack.push({ :name => token[1], :type => @currMode[:type] })
+            # new variable Decl
+            if contextToken[1] == 'param_decl'
+              @usableVariablesStack.push({ :name => token[1], :type => @currMode[:type], :paramDecl => 1})
+            else
+              @usableVariablesStack.push({ :name => token[1], :type => @currMode[:type], :paramDecl => 0})
+            end
           end
         elsif doDecls == 1 and !includeVar?(token[1])
           return 1
@@ -76,6 +80,18 @@ class RubyCompiler
     end
   end
 
+  def getVariablesByScope(scope=@currFunc)
+    return @scopeVars[scope]
+  end
+
+  def getParamsByScope(scope=@currFunc)
+    return getVariablesByScope(scope).map{|p| p[:paramDecl] == 1 ? nil : p}.compact
+  end
+
+  def getTempVarsByScope(scope=@currFunc)
+    return getVariablesByScope(scope).map{|p| p[:paramDecl] == 0 ? nil : p}.compact
+  end
+
   def includeVar?(token)
     return !(@usableVariablesStack.map{|h| h['name']}.flatten.include?(token))
   end
@@ -89,8 +105,8 @@ class RubyCompiler
   end
 
   def getTokenType(name)
-    idx = @scopeStack.map{|k| k[:name]}.index(name)
-    if !idx.nil?
+    idx = !@sillyPrintStack.map{|k| k[:name]}.index(name).nil? || !@scopeStack.map{|k| k[:name]}.index(name).nil?
+    if idx
       return 'FUNCTION'
     end
     i = @usableVariablesStack.size - 1
