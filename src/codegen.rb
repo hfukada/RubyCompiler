@@ -16,7 +16,6 @@ class RubyCompiler
 
     if tokenValues.last =~ Grammar::COMPOP
       @compop = tokenValues.last
-      #@compreg1 = generateAnyExpr(tokenValues[2..tokenValues.size-2],@baseWhileStack[2..tokenValues.size-2])
       @compreg1 = generateExpr(tokenValues[2..tokenValues.size-2],@baseWhileStack[2..tokenValues.size-2])
       @usedRegisters[@compreg1][:preserve] = 1
 
@@ -29,7 +28,6 @@ class RubyCompiler
       expr = tokenValues[tokenValues.index(@compop)+1..tokenValues.size - 3]
       exprWithGrammar = @baseWhileStack[tokenValues.index(@compop)+1..tokenValues.size - 3]
       type=getExprType(expr) == 'INT' ? 'i' : 'r'
-      #@compreg2 = generateAnyExpr(expr, exprWithGrammar)
       @compreg2 = generateExpr(expr, exprWithGrammar)
       addIR(getIRComp(@compop)+type, "r#{@compreg1}", "r#{@compreg2}", @labelStack.pop)
       @usedRegisters[@compreg1][:preserve] = 0
@@ -89,7 +87,6 @@ class RubyCompiler
           expr = tokenValues[tokenValues.index(@compop)+1..tokenValues.size - 2]
           exprWithGrammar = @baseIfStack[tokenValues.index(@compop)+1..tokenValues.size - 2]
           type=getExprType(expr) == 'INT' ? 'i' : 'r'
-          #@compreg2 = generateAnyExpr(expr, exprWithGrammar, true)
           @compreg2 = generateExpr(expr, exprWithGrammar)
 
           addIR(flipComp(@compop)+type, "r#{@compreg1}", "r#{@compreg2}", @labelStack.last)
@@ -124,19 +121,6 @@ class RubyCompiler
         type = getType(tokenValues[0])
         resultReg = generateExpr(tokenValues[2..tokenValues.size-2], type)
         checkAndStore(resultReg, tokenValues[0], type)
-        #type = self.getType(tokenValues[0])
-        #generateExpr(tokenValues[2..tokenValues.size-2])
-        #resultReg = generateAnyExpr(tokenValues[2..tokenValues.size-2], @baseExprStack[2..tokenValues.size-2])
-        #op = "STORE"
-        #op += type  == 'INT' ? 'I' : 'r'
-        #reg = chooseRegister(type, tokenValues[2..tokenValues.size-2].join)
-
-        #if (isLiteral?(tokenValues[2]) or getType(tokenValues[2]) != -1) and tokenValues.size == 4
-        #  addIR(op, resultReg, nil, reg)
-        #  addIR(op, reg, nil, tokenValues[0])
-        #else
-        #  addIR(op, resultReg, nil, tokenValues[0])
-        #end
       end
     end
   end
@@ -149,7 +133,6 @@ class RubyCompiler
 
     postfix = generatePostfix(expr)
     exprStack = []
-    #printA postfix.map{|i|i[0]}
 
     while !postfix.empty?
       tok = postfix.shift
@@ -168,11 +151,6 @@ class RubyCompiler
           exprStack.push("#{op1}#{tok[0]}#{op2}")
         else
           # check if ops exist in the registers
-
-          #puts "------"
-          #puts "#{op1}#{tok[0]}#{op2}"
-          #puts "------"
-          #printRegs
           opArg1 = symbolInRegister? op1
           opArg2 = symbolInRegister? op2
 
@@ -210,32 +188,9 @@ class RubyCompiler
             opArg2 = "r#{opArg2}"
 
           end
-          # the first argument must be in the register
-          #if opArg1 == -1
-          #  opArg1 = loadTok(op1, type)
-          #end
-          #@usedRegisters[opArg1][:preserve] = 1
-
-          ## if not in register and is a literal, load it
-          #reg2 = -1
-          #if opArg2 == -1 and isLiteral?(op2)
-          #  reg2 = loadTok(op2, type)
-          #  opArg2 = "r#{reg2}"
-          #  @usedRegisters[reg2][:preserve] = 1
-          ## if not in register, but it is a variable we can directly use it for second argument
-          #elsif opArg2 == -1 and !isLiteral?(op2)
-          #  opArg2 = op2
-          #else
-          #  reg2 = opArg2
-          #  opArg2 = "r#{opArg2}"
-          #  @usedRegisters[reg2][:preserve] = 1
-          #end
-
 
           # always store our result in arg2, because it is a guaranteed register
           addIR(op, "r#{opArg1}", opArg2, "r#{opArg1}")
-          #puts "r#{opArg1} #{opArg2} = #{op1}#{tok[0]}#{op2}"
-          #printRegs
 
           setReg(opArg1,"#{op1}#{tok[0]}#{op2}", 0)
           if reg2 != -1
@@ -323,88 +278,7 @@ class RubyCompiler
     opt += type == 'INT' ? 'I' : 'R'
   end
 
-  def generateAnyExpr(expr, exprwithgrammer=nil, force=false)
-    exprStack = []
-    type=getExprType(expr)
-    if expr.size == 1
-      if isLiteral?(expr[0])
-        return loadLiteral(expr[0])
-      else
-        if force == true
-          return loadSymbol(expr[0], type)
-        end
-        return expr[0]
-      end
-    end
-    while (expr.size != 0) do
-      exprStack.push(expr.shift)
-      if exprStack.last == ')'
-        resultReg = generateExprSegment(exprStack[exprStack.rindex('(')+1..exprStack.size-2], type)
-        exprStack = exprStack.first(exprStack.rindex('('))
-        exprStack.push resultReg
-      end
-    end
-    generateExprSegment(exprStack, type)
-  end
-
-  def generateExprSegment(segment, type)
-    temp = []
-    i = 1
-    if segment.size == 1
-      return segment[0]
-    end
-    segment.each{|tok|
-      if temp.last == '*' or temp.last == '/'
-        op = temp.pop == '*' ? 'MUL' : 'DIV'
-        op1 = temp.pop
-        op2 = tok
-        op1r = op1
-        op2r = op2
-
-        if isLiteral?(op1)
-          op1 = loadLiteral(op1)
-        end
-        if isLiteral?(op2)
-          op2 = loadLiteral(op2)
-        end
-
-        op += type == 'INT' ? 'I' : 'r'
-        register = chooseRegister(type, "#{op1r}#{op}#{op2r}")
-
-        self.addIR(op, op1, op2, register)
-
-        temp.push(register)
-      else
-        temp.push(tok)
-      end
-    }
-
-    while temp.size > 1 do
-      op1 = temp.shift
-      op = temp.shift
-      op2 = temp.shift
-      op1r = op1
-      op2r = op2
-
-      if isLiteral?(op1)
-        op1 = loadLiteral(op1)
-      end
-      if isLiteral?(op2)
-        op2 = loadLiteral(op2)
-      end
-      op = op == '+' ? 'ADD' : 'SUB'
-      op += type == 'INT' ? 'I' : 'r'
-
-      register = chooseRegister(type,"#{op1r}#{op}#{op2r}")
-      self.addIR(op, op1, op2, register)
-      temp.unshift(register)
-    end
-    temp.last
-  end
-
   def chooseRegister(hash)
-    #puts hash
-    #printRegs
     (0..@usedRegisters.size-1).each{|i|
       if @usedRegisters[i][:hash] != ""
         @usedRegisters[i][:time] += 1
@@ -423,29 +297,7 @@ class RubyCompiler
       end
     }
 
-    # make room for register, choose oldest register
-    # store the old register IF the hash is a simple variable
-    chosenReg = -1
-    (0..@usedRegisters.size-1).each{|i|
-      if @usedRegisters[i][:time] == 0
-        chosenReg = i
-        break
-      end
-    }
-    if chosenReg == -1
-
-      max = @usedRegisters.map{|k| k[:time] }.max
-      chosenReg = @usedRegisters.map{|k| k[:time]}.index(max)
-      #puts chosenReg
-      #chosenReg = @usedRegisters.map{|k| k[:time]}.index(@usedRegisters.map{|k| k[:time] }.max)
-      #printRegs
-      chosenReg = @usedRegisters.map{|k| k[:preserve] == 1 ? -1 : k[:time]}.each_with_index.max[1]
-      #puts chosenReg2
-      #if chosenReg2 != chosenReg
-      #  #printRegs
-      #end
-      #puts chosenReg
-    end
+    chosenReg = @usedRegisters.map{|k| k[:preserve] == 1 ? -1 : k[:time]}.each_with_index.max[1]
     setReg(chosenReg, hash, 1)
   end
 
@@ -461,7 +313,6 @@ class RubyCompiler
     }
   end
 
-
   def printRegs()
     @usedRegisters.each{|r|
       puts r
@@ -470,7 +321,6 @@ class RubyCompiler
 
   def dirtyRegisters!(idx, name)
     (0..@usedRegisters.size-1).each{|i|
-      #puts "#{@usedRegisters[i][:hash]} , #{name}"
       @usedRegisters[i][:dirty] = @usedRegisters[i][:hash].include?(name) ? 1 : 0
     }
   end
@@ -484,12 +334,9 @@ class RubyCompiler
 
     # store the desired reg into the name
     # keep result in reg with the name as hash
-    #puts "r#{reg} --> #{name}"
     addIR(op, "r#{reg}", nil, name)
     @usedRegisters[reg][:hash] = name
     @usedRegisters[reg][:dirty] = 0
-    #printRegs
-    #puts ''
   end
 
   def symbolInRegister?(hash)
@@ -514,8 +361,6 @@ class RubyCompiler
   end
 
   def loadSymbol(symbol, type)
-    #puts symbol
-    #printRegs
     reg = symbolInRegister?(symbol)
     if reg != -1
       return reg
