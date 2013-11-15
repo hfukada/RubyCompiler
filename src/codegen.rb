@@ -16,18 +16,23 @@ class RubyCompiler
 
     if tokenValues.last =~ Grammar::COMPOP
       @compop = tokenValues.last
-      @compreg1 = generateAnyExpr(tokenValues[2..tokenValues.size-2],@baseWhileStack[2..tokenValues.size-2])
+      #@compreg1 = generateAnyExpr(tokenValues[2..tokenValues.size-2],@baseWhileStack[2..tokenValues.size-2])
+      @compreg1 = generateExpr(tokenValues[2..tokenValues.size-2],@baseWhileStack[2..tokenValues.size-2])
+      @usedRegisters[@compreg1][:preserve] = 1
 
     elsif tokenValues.last == 'DO'
       addLabel
       addIR("LABEL", nil, nil, @labelStack.last)
+      resetRegisters
 
     elsif tokenValues.last == ';'
       expr = tokenValues[tokenValues.index(@compop)+1..tokenValues.size - 3]
       exprWithGrammar = @baseWhileStack[tokenValues.index(@compop)+1..tokenValues.size - 3]
       type=getExprType(expr) == 'INT' ? 'i' : 'r'
-      @compreg2 = generateAnyExpr(expr, exprWithGrammar)
-      addIR(getIRComp(@compop)+type, @compreg1, @compreg2, @labelStack.pop)
+      #@compreg2 = generateAnyExpr(expr, exprWithGrammar)
+      @compreg2 = generateExpr(expr, exprWithGrammar)
+      addIR(getIRComp(@compop)+type, "r#{@compreg1}", "r#{@compreg2}", @labelStack.pop)
+      @usedRegisters[@compreg1][:preserve] = 0
 
     end
 
@@ -37,9 +42,8 @@ class RubyCompiler
     tokenValues = @baseIfStack.map{|k| k[0]}
 
     if tokenValues.last() =~ Grammar::COMPOP
+       resetRegisters
        @compop = tokenValues.last
-       #@compreg1 = generateAnyExpr(tokenValues[2..tokenValues.size-2],@baseIfStack[2..tokenValues.size-2])
-
 
        @compreg1 = generateExpr(tokenValues[2..tokenValues.size-2],@baseIfStack[2..tokenValues.size-2])
        @usedRegisters[@compreg1][:preserve] = 1
@@ -47,6 +51,7 @@ class RubyCompiler
     elsif @baseIfStack.last == [')','condend'] or @currline =~ /(ENDIF)/
       if @currline.include?("ENDIF")
         # end if label
+        resetRegisters
         addIR("LABEL", nil, nil, @labelStack.pop)
         addIR("LABEL", nil, nil, @labelStack.pop)
 
@@ -66,9 +71,8 @@ class RubyCompiler
           expr = tokenValues[tokenValues.index(@compop)+1..tokenValues.size - 2]
           exprWithGrammar = @baseIfStack[tokenValues.index(@compop)+1..tokenValues.size - 2]
           type=getExprType(expr) == 'INT' ? 'i' : 'r'
-          # @compreg2 = generateAnyExpr(expr, exprWithGrammar, true)
           @compreg2 = generateExpr(expr, exprWithGrammar)
-          addIR(flipComp(@compop)+type, @compreg1, @compreg2, @labelStack.last)
+          addIR(flipComp(@compop)+type, "r#{@compreg1}", "r#{@compreg2}", @labelStack.last)
 
           @usedRegisters[@compreg1][:preserve] = 0
 
@@ -85,9 +89,10 @@ class RubyCompiler
           expr = tokenValues[tokenValues.index(@compop)+1..tokenValues.size - 2]
           exprWithGrammar = @baseIfStack[tokenValues.index(@compop)+1..tokenValues.size - 2]
           type=getExprType(expr) == 'INT' ? 'i' : 'r'
-          @compreg2 = generateAnyExpr(expr, exprWithGrammar, true)
+          #@compreg2 = generateAnyExpr(expr, exprWithGrammar, true)
+          @compreg2 = generateExpr(expr, exprWithGrammar)
 
-          addIR(flipComp(@compop)+type, @compreg1, @compreg2, @labelStack.last)
+          addIR(flipComp(@compop)+type, "r#{@compreg1}", "r#{@compreg2}", @labelStack.last)
         end
       end
     end
@@ -229,8 +234,8 @@ class RubyCompiler
 
           # always store our result in arg2, because it is a guaranteed register
           addIR(op, "r#{opArg1}", opArg2, "r#{opArg1}")
-          puts "r#{opArg1} #{opArg2} = #{op1}#{tok[0]}#{op2}"
-          printRegs
+          #puts "r#{opArg1} #{opArg2} = #{op1}#{tok[0]}#{op2}"
+          #printRegs
 
           setReg(opArg1,"#{op1}#{tok[0]}#{op2}", 0)
           if reg2 != -1
@@ -448,6 +453,14 @@ class RubyCompiler
     @usedRegisters[regNum] = {:hash=>hash, :dirty=>0, :time=>0, :preserve=>preserve }
     return regNum
   end
+
+  def resetRegisters()
+    @usedRegisters = []
+    (1..@regCount).each{|u|
+      @usedRegisters += [{:hash => "", :dirty => 0, :time => 0, :preserve => 0}]
+    }
+  end
+
 
   def printRegs()
     @usedRegisters.each{|r|

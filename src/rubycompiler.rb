@@ -25,13 +25,14 @@ class RubyCompiler
   @currMode
   @sillyPrintStack
   @scopeVars
+  @regCount
 
   @IRStack
   @regindex
   @labelindex
   @usedRegisters
 
-  def initialize(file)
+  def initialize(file, regNum=4)
     @parseStack = Grammar::DEFINITIONS["program"].split.zip(['program']*(Grammar::DEFINITIONS["program"].split).size)
     @parseTable = {}
     @indexedGrammar = []
@@ -54,7 +55,12 @@ class RubyCompiler
 
     @regindex = -1
     @labelindex = 0
-    @usedRegisters=[{:hash=>"", :dirty=>0, :time=>0 },{:hash=>"", :dirty=>0, :time=>0 },{:hash=>"", :dirty=>0, :time=>0 },{:hash=>"", :dirty=>0, :time=>0 }]
+    @regCount = regNum
+    @usedRegisters=[]
+
+    resetRegisters
+    
+
     @labelStack = []
     @blockIndex = 1
     createParseTable()
