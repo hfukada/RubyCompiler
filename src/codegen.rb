@@ -311,6 +311,8 @@ class RubyCompiler
       end
     }
 
+    #chosenReg = @usedRegisters.size
+    #@usedRegisters += []
     chosenReg = @usedRegisters.map{|k| k[:preserve] == 1 ? -1 : k[:time]}.each_with_index.max[1]
     setReg(chosenReg, hash, 1)
   end
