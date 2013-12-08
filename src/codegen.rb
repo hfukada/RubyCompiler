@@ -366,22 +366,26 @@ class RubyCompiler
 
   def functionCall(func, type)
     funcName = func[0]
-    args = func[1].chunk{|i| i == ',' }.map{|j,k| k == [','] ? nil : k}.compact
+    #args = func[1].chunk{|i| i == ',' }.map{|j,k| k == [','] ? nil : k}.compact
+    args = splitArgs(func[1])
 
     # push return value space
+    addIR("PUSH", nil, nil, nil)
+
     # push paraneters onto stack
     exprRegs=[]
     args.each{|expr|
       exprRegs += [generateExpr(expr,type)]
+      addIR("PUSH", nil, nil, "r#{exprRegs.last}")
     }
 
-    addIR("PUSH", nil, nil, nil)
 
     #push expr param
-    exprRegs.each{|reg|
-      addIR("PUSH", nil, nil, "r#{reg}")
-    }
+    #exprRegs.each{|reg|
+    #  addIR("PUSH", nil, nil, "r#{reg}")
+    #}
 
+    #push registers
     (0..@regCount-1).each{|k|
       addIR("PUSH", nil, nil, "r#{k}")
     }
@@ -401,6 +405,26 @@ class RubyCompiler
     resultReg = chooseRegister(func.flatten.join)
     addIR("POP", nil, nil, "r#{resultReg}")
     resultReg
+  end
+
+  def splitArgs(args)
+    i = 0
+    inparen = 0;
+    temparg = [[]]
+    while i < args.size do
+      if args[i] == '('
+        inparen += 1
+      elsif args[i] == ')'
+        inparen -= 1
+      end
+      if args[i] == ',' and inparen == 0
+        temparg.push []
+      else
+        temparg.last.push args[i]
+      end
+      i += 1
+    end
+    temparg
   end
 
   def loadTok(symbol, type)
@@ -462,7 +486,6 @@ class RubyCompiler
   # easier ident. of where blocks begin and end in a single line
   def getMatchingParenIndex(expr, firstIdx)
     p = 0
-
     (firstIdx..expr.size-1).each{|i|
       tok = expr[i]
       if tok == '('
